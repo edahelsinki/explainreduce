@@ -14,7 +14,7 @@ import explainreduce.localmodels as lm
 import explainreduce.proxies as px
 import explainreduce.metrics as metrics
 from explainreduce.utils import read_parquet
-from hyperparameters import get_params, get_bb, get_data
+from reproduce.utils.hyperparameters import get_params, get_bb, get_data
 import pyarrow.parquet as pq
 import seaborn as sns
 import matplotlib.pyplot as plt
