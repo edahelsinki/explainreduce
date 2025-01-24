@@ -21,7 +21,7 @@ from project_paths import RESULTS_DIR, MANUSCRIPT_DIR
 import pandas as pd
 import operator
 from functools import reduce
-from reproduce.utils.hyperparameters import get_bb, get_data, get_params
+from experiment.utils.hyperparameters import get_bb, get_data, get_params
 import matplotlib.pyplot as plt
 import seaborn as sns
 
