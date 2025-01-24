@@ -4,7 +4,6 @@ import gc
 import sys
 from glob import glob
 from timeit import default_timer as timer
-from itertools import chain
 
 import numpy as np
 import pandas as pd
@@ -19,7 +18,7 @@ from sklearn.ensemble import (
     RandomForestClassifier,
     RandomForestRegressor,
 )
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.svm import SVC, SVR
 
@@ -35,7 +34,7 @@ from slisemap.slipmap import Slipmap
 from slisemap.tuning import hyperparameter_tune
 from skopt import gp_minimize
 from skopt.utils import use_named_args
-from skopt.space import Real, Categorical, Integer
+from skopt.space import Real
 
 
 def get_bb(bb, cls, X, y, dname=None):
@@ -103,48 +102,25 @@ def get_bb(bb, cls, X, y, dname=None):
 
 def get_data(differentiable=False):
     """Get data dictionary in the form of dset name:  (X, y, bb_name, classification)"""
-    if differentiable:
-        # use differentiable BB models
-        return {
-            # use lambdas for lazy loading
-            "Synthetic": lambda: (
-                *data.get_rsynth(N=5000, k=5, s=2.0)[1:3],
-                "Neural Network",
-                False,
-            ),
-            "Air Quality": lambda: (*data.get_airquality(), "SVM", False),
-            "Gas Turbine": lambda: (*data.get_gas_turbine(), "Neural Network", False),
-            "QM9": lambda: (*data.get_qm9(), "Neural Network", False),
-            "Higgs": lambda: (*data.get_higgs(), "SVM", True),
-            "Jets": lambda: (*data.get_jets(), "Neural Network", True),
-            "Life Expectancy": lambda: (
-                *data.get_life(blackbox=None),
-                "Neural Network",
-                False,
-            ),
-            "Vehicles": lambda: (*data.get_vehicle(blackbox=None), "SVM", False),
-        }
-
-    else:
-        return {
-            # use lambdas for lazy loading
-            "Synthetic": lambda: (
-                *data.get_rsynth(N=5000, k=5, s=2.0)[1:3],
-                "Random Forest",
-                False,
-            ),
-            "Air Quality": lambda: (*data.get_airquality(), "Random Forest", False),
-            "Gas Turbine": lambda: (*data.get_gas_turbine(), "AdaBoost", False),
-            "QM9": lambda: (*data.get_qm9(), "Neural Network", False),
-            "Higgs": lambda: (*data.get_higgs(), "Gradient Boosting", True),
-            "Jets": lambda: (*data.get_jets(), "Random Forest", True),
-            "Life Expectancy": lambda: (
-                *data.get_life(blackbox=None),
-                "Neural Network",
-                False,
-            ),
-            "Vehicles": lambda: (*data.get_vehicle(blackbox=None), "SVM", False),
-        }
+    return {
+        # use lambdas for lazy loading
+        "Synthetic": lambda: (
+            *data.get_rsynth(N=5000, k=5, s=2.0)[1:3],
+            "Random Forest",
+            False,
+        ),
+        "Air Quality": lambda: (*data.get_airquality(), "Random Forest", False),
+        "Gas Turbine": lambda: (*data.get_gas_turbine(), "AdaBoost", False),
+        "QM9": lambda: (*data.get_qm9(), "Neural Network", False),
+        "Higgs": lambda: (*data.get_higgs(), "Gradient Boosting", True),
+        "Jets": lambda: (*data.get_jets(), "Random Forest", True),
+        "Life Expectancy": lambda: (
+            *data.get_life(blackbox=None),
+            "Neural Network",
+            False,
+        ),
+        "Vehicles": lambda: (*data.get_vehicle(blackbox=None), "SVM", False),
+    }
 
 
 def get_hyperopts():
@@ -157,10 +133,6 @@ def get_hyperopts():
         # "SHAP": hyperopt_shap,
         "SmoothGrad": hyperopt_smoothgrad,
     }
-
-
-def hyperopt_shap(X_train, y_train, X_test, y_test, classifier, pred_fn):
-    return
 
 
 def hyperopt_smoothgrad(
