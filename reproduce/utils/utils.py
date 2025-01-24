@@ -1,9 +1,17 @@
 """Contains functions used for reproducing the experiments in the paper."""
 
+import sys
+import os
+
+# Get the absolute path of the directory containing explainreduce
+PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+
+# Add to sys.path
+sys.path.append(PROJECT_DIR)
+
 import torch
 from sklearn.model_selection import train_test_split
 from functools import partial
-from reproduce.utils.hyperparameters import get_params
 import explainreduce.localmodels as lm
 import explainreduce.proxies as px
 import explainreduce.metrics as metrics
@@ -13,7 +21,9 @@ from project_paths import RESULTS_DIR, MANUSCRIPT_DIR
 import pandas as pd
 import operator
 from functools import reduce
-from reproduce.utils.hyperparameters import get_bb, get_data
+from reproduce.utils.hyperparameters import get_bb, get_data, get_params
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 OUTPUT_DIR = RESULTS_DIR / "k_sensitivity"
@@ -543,3 +553,48 @@ def evaluate_subsample_sensitivity(job_id: int, ns: list[int]) -> None:
                         )
                         results.to_parquet(output_file)
     print("Done.", flush=True)
+
+
+def plot_pyramid():
+    x = np.linspace(-3, 3, 50)
+    y = np.cos(x)
+    y_train = y + np.random.normal(loc=0.0, scale=0.15, size=y.shape)
+    sm = lm.SLISEMAPExplainer(x[:, None], y_train, lasso=0)
+    sm.fit()
+    epsilon = torch.quantile(sm.get_L(), q=0.5).item()
+    proxies = px.find_proxies_coverage(sm, k=2, epsilon=epsilon)
+    fig, ax = plt.subplots(ncols=3, figsize=(15, 5))
+    sns.scatterplot(x=x, y=y_train, ax=ax[0])
+    sns.lineplot(x=x, y=y, ax=ax[0])
+    positive_mask = sm.vector_representation[:, 0] > 0
+    sns.scatterplot(x=x[positive_mask], y=y_train[positive_mask], ax=ax[1])
+    for i, p in enumerate(positive_mask):
+        if p:
+            ax[1].plot(x, sm.local_models[i](x[:, None]), c="tab:blue", linestyle="--")
+        else:
+            ax[1].plot(
+                x, sm.local_models[i](x[:, None]), c="tab:orange", linestyle="--"
+            )
+    sns.scatterplot(x=x[~positive_mask], y=y_train[~positive_mask], ax=ax[1])
+    ax[1].set_ylim(ax[0].get_ylim())
+    positive_mask = proxies.mapped_vector_representation()[:, 0] > 0
+    errorbars = lambda x: (x - epsilon, x + epsilon)
+    lower1, upper1 = errorbars(proxies.local_models[0](x[:, None])[:, 0])
+    lower2, upper2 = errorbars(proxies.local_models[1](x[:, None])[:, 0])
+    sns.scatterplot(x=x[positive_mask], y=y_train[positive_mask], ax=ax[2])
+    sns.scatterplot(x=x[~positive_mask], y=y_train[~positive_mask], ax=ax[2])
+    sns.lineplot(x=x, y=proxies.local_models[0](x[:, None])[:, 0], ax=ax[2])
+    ax[2].plot(x, lower1, color="tab:blue", alpha=0.1)
+    ax[2].plot(x, upper1, color="tab:blue", alpha=0.1)
+    ax[2].fill_between(x, lower1, upper1, color="tab:blue", alpha=0.2)
+    sns.lineplot(
+        x=x, y=proxies.local_models[1](x[:, None])[:, 0], ax=ax[2], errorbar=errorbars
+    )
+    ax[2].plot(x, lower2, color="tab:orange", alpha=0.1)
+    ax[2].plot(x, upper2, color="tab:orange", alpha=0.1)
+    ax[2].fill_between(x, lower2, upper2, color="tab:orange", alpha=0.2)
+    ax[2].set_ylim(ax[0].get_ylim())
+    ax[2].set_ylabel("")
+    ax[0].set_ylabel("f(x)")
+    ax[1].set_xlabel("x")
+    # plt.savefig(MANUSCRIPT_DIR / "pyramid_example.pdf", dpi=600)
