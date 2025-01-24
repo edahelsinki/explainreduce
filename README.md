@@ -5,6 +5,10 @@ ExplainReduce is a global, model-agnostic, and post-hoc explanation method that 
 ## Example
 A simple example of the idea behind ExplainReduce. A black-box model (left) can have many local explanations (middle), but ExplainReduce can reduce the size of the local explanation set to get a global explanation consisting of two simple models (right).
 <br><br>
+```python
 
+from reproduce.utils.utils import plot_pyramid
 
+plot_pyramid()
+```
 
