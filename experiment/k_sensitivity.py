@@ -97,59 +97,6 @@ def plot_results(df: pd.DataFrame):
             g.axes[i, j].set_title(f"Dataset: {dname}, XAI: {exp_name}")
             i_f += 1
     plt.savefig(MANUSCRIPT_DIR / "fidelity_k.pdf", dpi=600)
-    dname = "Gas Turbine"
-    spdf = p_df.loc[p_df["data"].isin([dname])]
-    spdf = spdf.loc[spdf["exp_method"].isin(["LIME", "SHAP", "SLISEMAP"])]
-    spdf = spdf[
-        [
-            "job",
-            "exp_method",
-            "data",
-            "Reduction method",
-            "proxy_coverage",
-            "proxy_stability",
-            "k",
-        ]
-    ].melt(["job", "exp_method", "data", "Reduction method", "k"])
-    g = sns.relplot(
-        spdf,
-        x="k",
-        y="value",
-        col="exp_method",
-        row="variable",
-        hue="Reduction method",
-        style="Reduction method",
-        kind="line",
-        facet_kws={"sharey": False},
-    )
-    for i, varname in enumerate(spdf["variable"].unique()):
-        # set ylims based on dataset
-        data_y_min, data_y_max = np.inf, -np.inf
-        for j, exp_name in enumerate(spdf["exp_method"].unique()):
-            y_min, y_max = g.axes[i, j].get_ylim()
-            variable_name = "coverage" if "coverage" in varname else "stability"
-            full_value = mean_df.loc[
-                (mean_df["data"] == dname) & (mean_df["exp_method"] == exp_name)
-            ][f"full_{variable_name}"].values[0]
-            if y_min < data_y_min:
-                data_y_min = y_min
-            if y_max > data_y_max:
-                data_y_max = y_max
-            y_max = max(y_max, full_value)
-        for j, exp_name in enumerate(spdf["exp_method"].unique()):
-            variable_name = "coverage" if "coverage" in varname else "stability"
-            full_value = mean_df.loc[
-                (mean_df["data"] == dname) & (mean_df["exp_method"] == exp_name)
-            ][f"full_{variable_name}"].values[0]
-            if j == 0:
-                if variable_name == "stability":
-                    g.axes[i, j].set_ylabel("Instability")
-                else:
-                    g.axes[i, j].set_ylabel("Coverage")
-            g.axes[i, j].axhline(full_value, color="k", linestyle="--")
-            g.axes[i, j].set_ylim((data_y_min, data_y_max))
-            g.axes[i, j].set_title(f"XAI: {exp_name}")
-    plt.savefig(MANUSCRIPT_DIR / "coverage_stability_k_small.pdf", dpi=600)
 
 
 def plot_results_full(df: pd.DataFrame):
@@ -237,6 +184,10 @@ def plot_results_full(df: pd.DataFrame):
             # g.axes[i, j].set_ylim((data_y_min, data_y_max))
             g.axes[i, j].set_title(f"Dataset: {dname}, XAI: {exp_name}")
             i_f += 1
+    # Reduce the size to fit into the paper
+    fig = g.figure
+    original_size = fig.get_size_inches()
+    fig.set_size_inches(original_size[0], original_size[1] * 5 / 8)
     plt.savefig(MANUSCRIPT_DIR / "fidelity_k_full.pdf", dpi=600)
 
 
@@ -244,7 +195,7 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         files = glob(str(OUTPUT_DIR / "*.parquet"))
         df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-        plot_results(df)
+        # plot_results(df)
         plot_results_full(df)
     else:
         ks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

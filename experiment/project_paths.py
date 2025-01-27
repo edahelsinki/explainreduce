@@ -14,6 +14,6 @@ PROJECT_DIR = Path(__file__).parent.parent.absolute()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-DATA_DIR = PROJECT_DIR / "reproduce" / "data"
-RESULTS_DIR = PROJECT_DIR / "reproduce" / "results"
+DATA_DIR = PROJECT_DIR / "experiment" / "data"
+RESULTS_DIR = PROJECT_DIR / "experiment" / "results"
 MANUSCRIPT_DIR = PROJECT_DIR / "ms"
