@@ -160,7 +160,7 @@ def plot_results_full(df: pd.DataFrame):
         for i, dataset in enumerate(sub_df["data"].unique()):
             for j, exp_method in enumerate(sub_df["exp_method"].unique()):
                 g.axes[i, j].set_ylabel(ylabel)
-                g.axes[i, j].set_title(f"XAI: {exp_method}")
+                g.axes[i, j].set_title(f"Dataset: {dataset}, XAI: {exp_method}")
 
         # Reduce the size to fit into the paper
         fig = g.figure
