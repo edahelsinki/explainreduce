@@ -29,6 +29,33 @@ import seaborn as sns
 OUTPUT_DIR = RESULTS_DIR / "k_sensitivity"
 
 
+def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df.loc[:, "proxy_method_mod"] = "None"
+    df = df.loc[~df["proxy_method"].isna()]
+    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
+        "Min set"
+    )
+    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
+        "Max coverage"
+    )
+    df.loc[
+        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
+    ] = "Greedy Max coverage"
+    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
+    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = "Min loss"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
+    ] = "Greedy Min loss (fixed k)"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
+        "proxy_method_mod",
+    ] = "Greedy Min loss (minimum coverage)"
+    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
+    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
+    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
+    return df
+
+
 def prepare_data(dataset_fun, seed):
 
     X, y, bb, cls = dataset_fun()

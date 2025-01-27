@@ -7,13 +7,14 @@ from timeit import default_timer as timer
 import pyarrow.parquet as pq
 import seaborn as sns
 import matplotlib.pyplot as plt
-from utils.utils import evaluate_subsample_sensitivity
+from utils.utils import evaluate_subsample_sensitivity, rename_columns
 
 OUTPUT_DIR = RESULTS_DIR / "n_sensitivity"
 
 
 def plot_results(df: pd.DataFrame):
     """Produce a latex table of the results and save to the repo."""
+    # Load the data, rename the columns
     df = pd.DataFrame()
     for f in OUTPUT_DIR.glob("**/*.parquet"):
         try:
@@ -24,41 +25,13 @@ def plot_results(df: pd.DataFrame):
         except Exception as e:
             print(f"Failed to read {f}")
             print(e)
-    # df.loc[:, 'full_fidelity'] = -(df['full_fidelity'] - 1)
-    # df.loc[:, 'proxy_fidelity'] = -(df['proxy_fidelity'] - 1)
-    df.loc[:, "proxy_method_mod"] = "None"
-    df = df.loc[~df["proxy_method"].isna()]
-    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
-        "Min set"
-    )
-    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
-        "Max coverage"
-    )
-    df.loc[
-        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
-    ] = "Greedy Max coverage"
-    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
-    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = "Min loss"
-    df.loc[
-        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
-    ] = "Greedy Min loss (fixed k)"
-    df.loc[
-        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
-        "proxy_method_mod",
-    ] = "Greedy Min loss (minimum coverage)"
-    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
-    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
-    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
+    df = rename_columns(df)
+
     exp_methods = ["LIME", "SHAP", "SLISEMAP", "SmoothGrad"]
     datasets = ["Gas Turbine", "Jets", "QM9"]
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
     s_df = p_df.copy(deep=True)
-    mean_df = (
-        p_df.groupby(["data", "exp_method"])
-        .mean(numeric_only=True)[["full_fidelity", "full_coverage", "bb_loss_test"]]
-        .reset_index()
-    )
     s_df.loc[:, "proxy_fidelity"] = s_df["sub_fidelity"]
     s_df.loc[:, "proxy_method_mod"] = "All local explanations"
     p_df = pd.concat((p_df, s_df), ignore_index=True)
@@ -135,41 +108,13 @@ def plot_results_full(df: pd.DataFrame):
         except Exception as e:
             print(f"Failed to read {f}")
             print(e)
-    # df.loc[:, 'full_fidelity'] = -(df['full_fidelity'] - 1)
-    # df.loc[:, 'proxy_fidelity'] = -(df['proxy_fidelity'] - 1)
-    df.loc[:, "proxy_method_mod"] = "None"
-    df = df.loc[~df["proxy_method"].isna()]
-    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
-        "Min set"
-    )
-    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
-        "Max coverage"
-    )
-    df.loc[
-        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
-    ] = "Greedy Max coverage"
-    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
-    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = "Min loss"
-    df.loc[
-        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
-    ] = "Greedy Min loss (fixed k)"
-    df.loc[
-        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
-        "proxy_method_mod",
-    ] = "Greedy Min loss (minimum coverage)"
-    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
-    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
-    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
+    df = rename_columns(df)
+
     exp_methods = ["LIME", "SHAP", "SLISEMAP", "SmoothGrad"]
     datasets = df["data"].unique()
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
     s_df = p_df.copy(deep=True)
-    mean_df = (
-        p_df.groupby(["data", "exp_method"])
-        .mean(numeric_only=True)[["full_fidelity", "full_coverage", "bb_loss_test"]]
-        .reset_index()
-    )
     s_df.loc[:, "proxy_fidelity"] = s_df["sub_fidelity"]
     s_df.loc[:, "proxy_method_mod"] = "All local explanations"
     p_df = pd.concat((p_df, s_df), ignore_index=True)

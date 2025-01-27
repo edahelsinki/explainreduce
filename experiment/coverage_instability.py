@@ -7,7 +7,7 @@ from timeit import default_timer as timer
 import pyarrow.parquet as pq
 import seaborn as sns
 import matplotlib.pyplot as plt
-from utils.utils import evaluate_k_sensitivity
+from utils.utils import evaluate_k_sensitivity, rename_columns
 
 OUTPUT_DIR = RESULTS_DIR / "k_sensitivity"
 
@@ -23,29 +23,7 @@ def plot_results(df: pd.DataFrame):
         except Exception as e:
             print(f"Failed to read {f}")
             print(e)
-    df.loc[:, "proxy_method_mod"] = "None"
-    df = df.loc[~df["proxy_method"].isna()]
-    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
-        "Min set"
-    )
-    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
-        "Max coverage"
-    )
-    df.loc[
-        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
-    ] = "Greedy Max coverage"
-    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
-    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = "Min loss"
-    df.loc[
-        df["proxy_method"].str.contains("greedy_min_loss_([0-9]+)"), "proxy_method_mod"
-    ] = "Greedy Min loss (fixed k)"
-    df.loc[
-        df["proxy_method"].str.contains("greedy_min_loss_([0-9]+)_min_cov"),
-        "proxy_method_mod",
-    ] = "Greedy Min loss (minimum coverage)"
-    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
-    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
-    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
+    df = rename_columns(df)
     exp_methods = ["LIME", "SHAP", "SLISEMAP", "SmoothGrad"]
     datasets = ["Gas Turbine", "Jets", "QM9"]
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
@@ -143,30 +121,7 @@ def plot_results_full(df: pd.DataFrame):
             print(f"Failed to read {f}")
             print(e)
 
-    # Process proxy methods
-    df.loc[:, "proxy_method_mod"] = "None"
-    df = df.loc[~df["proxy_method"].isna()]
-    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
-        "Min set"
-    )
-    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
-        "Max coverage"
-    )
-    df.loc[
-        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
-    ] = "Greedy Max coverage"
-    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
-    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = "Min loss"
-    df.loc[
-        df["proxy_method"].str.contains("greedy_min_loss_([0-9]+)"), "proxy_method_mod"
-    ] = "Greedy Min loss (fixed k)"
-    df.loc[
-        df["proxy_method"].str.contains("greedy_min_loss_([0-9]+)_min_cov"),
-        "proxy_method_mod",
-    ] = "Greedy Min loss (minimum coverage)"
-    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
-    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
-    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
+    df = rename_columns(df)
 
     exp_methods = ["LIME", "SHAP", "SLISEMAP", "SmoothGrad"]
     df = df.loc[df["exp_method"].isin(exp_methods)]
