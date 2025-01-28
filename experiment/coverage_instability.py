@@ -1,3 +1,22 @@
+###############################################################################
+#
+# This experiment evaluate
+#   1. Coverage of the proxies as a function of the proxy number k
+#   2. Stability of the proxies as a function of the proxy number k
+# with certain combinations of datasets and explanation methods.
+#
+# This experiment is designed to be run in parallel (e.g. on a computer cluster).
+#
+# Run this script to perform the experiments,
+# where job_id is an integer indicating the id of the parallel task.
+# For example (the number of proxies is defined within the main function):
+#   `python experiment/coverage_instability.py $job_id`
+#
+# Run this script again without additional arguments to produce plots of coverage and stability from the results:
+#   `python experiment/coverage_instability.py`
+#
+###############################################################################
+
 from project_paths import RESULTS_DIR, MANUSCRIPT_DIR
 from glob import glob
 import sys
@@ -175,7 +194,7 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         files = glob(str(OUTPUT_DIR / "*.parquet"))
         df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-        # plot_results(df)
+        plot_results(df)
         plot_results_full(df)
     else:
         ks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
