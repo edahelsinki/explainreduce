@@ -3,8 +3,8 @@ ExplainReduce is a global, model-agnostic, and post-hoc explanation method that 
 ## Citations
 ## Installation
 To install python, follow the instructions from the official website of [Python](https://www.python.org/downloads/).
-Below are instruction to the configuration of this project.
-1. Create a virtual environment
+To install the package, follow the instructions:
+1. Create a virtual environment (Optional)
    ```bash
     # Create a virtual environment
     python -m venv venv
