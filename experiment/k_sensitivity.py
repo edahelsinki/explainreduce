@@ -24,7 +24,7 @@ from timeit import default_timer as timer
 import pyarrow.parquet as pq
 import seaborn as sns
 import matplotlib.pyplot as plt
-from utils.utils import evaluate_k_sensitivity, rename_columns
+from utils.utils import evaluate_k_sensitivity, rename_columns, paper_theme
 
 OUTPUT_DIR = RESULTS_DIR / "k_sensitivity"
 
@@ -41,7 +41,7 @@ def plot_results(df: pd.DataFrame):
             print(f"Failed to read {f}")
             print(e)
     df = rename_columns(df)
-    exp_methods = ["LIME", "SHAP", "SLISEMAP", "SmoothGrad"]
+    exp_methods = ["LIME", "SHAP", "SLISEMAP"]
     datasets = ["Gas Turbine", "Jets", "QM9"]
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
@@ -69,6 +69,7 @@ def plot_results(df: pd.DataFrame):
         style="Reduction method",
         kind="line",
         facet_kws={"sharey": False},
+        **paper_theme(cols=len(exp_methods), rows=len(datasets)),
     )
     i_f = 0
     for i, dname in enumerate(p_df["data"].unique()):
