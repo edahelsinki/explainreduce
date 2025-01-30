@@ -26,7 +26,7 @@ from timeit import default_timer as timer
 import pyarrow.parquet as pq
 import seaborn as sns
 import matplotlib.pyplot as plt
-from utils.utils import evaluate_k_sensitivity, rename_columns
+from utils.utils import evaluate_k_sensitivity, rename_columns, paper_theme
 
 OUTPUT_DIR = RESULTS_DIR / "k_sensitivity"
 
@@ -71,6 +71,7 @@ def plot_results(df: pd.DataFrame):
         style="Reduction method",
         kind="line",
         facet_kws={"sharey": False},
+        **paper_theme(cols=3, rows=2),
     )
     dname = "Gas Turbine"
     spdf = p_df.loc[p_df["data"].isin([dname])]
