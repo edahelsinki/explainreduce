@@ -24,7 +24,7 @@ from timeit import default_timer as timer
 import pyarrow.parquet as pq
 import seaborn as sns
 import matplotlib.pyplot as plt
-from utils.utils import evaluate_subsample_sensitivity, rename_columns
+from utils.utils import evaluate_subsample_sensitivity, rename_columns, paper_theme
 
 OUTPUT_DIR = RESULTS_DIR / "n_sensitivity"
 
@@ -44,7 +44,7 @@ def plot_results(df: pd.DataFrame):
             print(e)
     df = rename_columns(df)
 
-    exp_methods = ["LIME", "SHAP", "SLISEMAP", "SmoothGrad"]
+    exp_methods = ["LIME", "SHAP", "SLISEMAP"]
     datasets = ["Gas Turbine", "Jets", "QM9"]
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
@@ -66,6 +66,7 @@ def plot_results(df: pd.DataFrame):
         style="Reduction method",
         kind="line",
         facet_kws={"sharey": False},
+        **paper_theme(cols=len(exp_methods), rows=len(datasets)),
         legend=None,
     )
     i_f = 0
@@ -86,7 +87,7 @@ def plot_results(df: pd.DataFrame):
             ax.get_lines(), p_df["Reduction method"].unique(), ax.collections
         ):
             if label == "All local explanations":
-                line.set_linewidth(3)
+                line.set_linewidth(2)
                 line.set_color("k")
                 line.set_zorder(9)
                 ci.set_color("k")
@@ -108,7 +109,7 @@ def plot_results(df: pd.DataFrame):
             )
         )
     g.figure.legend(
-        handles=handles, title="Reduction method", bbox_to_anchor=(1.17, 0.60)
+        handles=handles, title="Reduction method", bbox_to_anchor=(1.32, 0.64)
     )
     g.figure.savefig(MANUSCRIPT_DIR / "fidelity_n.pdf", dpi=600, bbox_inches="tight")
 
