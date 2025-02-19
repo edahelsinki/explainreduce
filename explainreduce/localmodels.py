@@ -220,6 +220,21 @@ class SLISEMAPExplainer(Explainer):
     def _generate_vector_representation(self) -> torch.Tensor:
         return self.sm.get_B(numpy=False)
 
+    def from_pretrained(self, sm: Slisemap) -> None:
+
+        self.sm = sm
+        B = self.sm.get_B(False)
+
+        def create_exp(i):
+            return lambda X: self.sm.local_model(self.sm._as_new_X(X), B[None, i])[
+                0, ...
+            ]
+
+        self.local_models = [create_exp(i) for i in range(self.X.shape[0])]
+        self.mapping = {i: i for i in range(self.X.shape[0])}
+        self.vector_representation = self._generate_vector_representation()
+        self.is_fit = True
+
 
 class SLIPMAPExplainer(SLISEMAPExplainer):
 
