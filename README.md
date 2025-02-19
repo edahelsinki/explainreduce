@@ -6,8 +6,10 @@ The set of proxies summarizes the black-box model's decision pattern across diff
 ## Citations
 Preprint of the ExplainReduce paper
 
-> *Seppäläinen, Lauri, Mudong Guo, and Kai Puolamäki (2025)*.
+> *Seppäläinen, Lauri, Mudong Guo, and Puolamäki, Kai (2025)*.
+>
 > **`ExplainReduce`: Summarising Local Explanations via Proxies**
+>
 > Arxiv preprint [https://arxiv.org/abs/2502.10311](https://arxiv.org/abs/2502.10311).
 
 ## Installation
