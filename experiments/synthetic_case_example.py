@@ -183,6 +183,7 @@ ax[1].legend()
 ax[1].set_xlabel("PCA 1")
 ax[1].set_ylabel("PCA 2")
 fig.savefig(MANUSCRIPT_DIR / "case_PCA.pdf", dpi=300)
+print(f"Scatter plot saved at {(MANUSCRIPT_DIR / "case_PCA.pdf")}")
 plt.show()
 
 # radar plot of models
@@ -228,4 +229,5 @@ labels = ("Ground truth", "Proxy model")
 legend = axs[1].legend(labels, loc=(0.85, 1.1), labelspacing=0.1, fontsize="medium")
 
 fig.savefig(MANUSCRIPT_DIR / "case_radar.pdf", dpi=300)
+print(f"Radar plot saved at {(MANUSCRIPT_DIR / "case_radar.pdf")}")
 plt.show()
