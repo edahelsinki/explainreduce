@@ -71,6 +71,8 @@ class Explainer(ABC):
                 self.loss_fn = logistic_regression_loss
             else:
                 self.loss_fn = torch.nn.MSELoss(reduction="none")
+        else:
+            self.loss_fn = loss_fn
         self.L = None
         self.explainer_kwargs = explainer_kwargs
         self.black_box_model = black_box_model
