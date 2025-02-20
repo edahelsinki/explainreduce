@@ -252,41 +252,6 @@ class SLIPMAPExplainer(SLISEMAPExplainer):
         return local_models, mapping
 
 
-def from_pretrained_SLISEMAP(
-    sm: Union[Slisemap, Slipmap], classifier: bool
-) -> Union[SLISEMAPExplainer, SLIPMAPExplainer]:
-
-    if type(sm) == Slisemap:
-        exp = SLISEMAPExplainer(
-            sm.get_X(intercept=False),
-            sm.get_Y(),
-            classifier=classifier,
-            loss_fn=sm.local_loss,
-        )
-    elif type(sm) == Slipmap:
-        exp = SLIPMAPExplainer(
-            sm.get_X(intercept=False),
-            sm.get_Y(),
-            classifier=classifier,
-            loss_fn=sm.local_loss,
-        )
-    else:
-        raise ValueError(
-            f"Input `sm` needs to be either SLISEMAP or SLIPMAP (found {type(sm)})!"
-        )
-    exp.sm = sm
-    B = sm.get_B(False)
-
-    def create_exp(i):
-        return lambda X: exp.sm.local_model(exp.sm._as_new_X(X), B[None, i])[0, ...]
-
-    exp.local_models = [create_exp(i) for i in range(exp.X.shape[0])]
-    exp.mapping = {i: i for i in range(exp.X.shape[0])}
-    exp.vector_representation = exp._generate_vector_representation()
-    exp.is_fit = True
-    return exp
-
-
 class SLISEExplainer(Explainer):
     def __init__(
         self,
