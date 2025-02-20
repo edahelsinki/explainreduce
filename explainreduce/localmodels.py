@@ -251,7 +251,7 @@ class SLIPMAPExplainer(SLISEMAPExplainer):
 
 
 def from_pretrained_SLISEMAP(
-    self, sm: Union[Slisemap, Slipmap], classifier: bool
+    sm: Union[Slisemap, Slipmap], classifier: bool
 ) -> Union[SLISEMAPExplainer, SLIPMAPExplainer]:
 
     if type(sm) == Slisemap:
