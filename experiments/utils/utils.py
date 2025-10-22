@@ -21,7 +21,7 @@ from project_paths import RESULTS_DIR, MANUSCRIPT_DIR
 import pandas as pd
 import operator
 from functools import reduce
-from experiment.utils.hyperparameters import get_bb, get_data, get_params
+from experiments.utils.hyperparameters import get_bb, get_data, get_params
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Union, Dict, Tuple
@@ -192,79 +192,6 @@ def get_optimisation_method(k: int, explainer: lm.Explainer):
         ),
         (f"glocalx_{k}", k): partial(px.find_proxies_glocalx, k=k),
     }
-
-
-def eval_proxy_method_k_sensitivity(
-    job_id,
-    dname,
-    expname,
-    explainer,
-    pname,
-    proxy_method,
-    k,
-    global_epsilon,
-    X,
-    X_test,
-    y,
-    y_test,
-    yhat_test,
-    loss_fn,
-    L,
-    full_fidelity,
-    full_loss,
-    bb_loss,
-    nn,
-):
-    print(
-        f"Reducing: {dname} - {expname} - {pname} - k={k}",
-        flush=True,
-    )
-    try:
-        proxies = proxy_method(explainer, epsilon=global_epsilon)
-    except ValueError as ve:
-        print(f"Reduction method resulted in error:\n", ve, flush=True)
-        return
-    print(
-        f"Evaluating: {dname} - {expname} - {pname} - k={k}",
-        flush=True,
-    )
-
-    # Calculate the loss of the proxy model on the training set
-    prx_yhat_train = proxies.predict(X)
-    loss_train = loss_fn(torch.as_tensor(y), prx_yhat_train)
-
-    # Calculate the loss of the proxy model on the testing set, and the test fidelity
-    prx_yhat_test = proxies.predict(X_test)
-    loss_test = loss_fn(torch.as_tensor(y_test), prx_yhat_test)
-    proxy_fidelity = loss_fn(torch.as_tensor(yhat_test), prx_yhat_test).mean().item()
-
-    # Get the loss matrix of the proxy model, and the expanded loss matrix
-    reduced_L = proxies.get_L()
-    expanded_L = reduced_L[list(proxies.mapping.values()), :]
-
-    # Get the results
-    res = dict(
-        job=job_id,
-        data=dname,
-        exp_method=expname,
-        proxy_method=pname,
-        k=len(proxies.local_models),
-        epsilon=global_epsilon,
-        full_fidelity=full_fidelity,
-        full_stability=L[torch.arange(L.shape[0])[:, None], nn].mean().item(),
-        full_coverage=metrics.calculate_coverage(L < global_epsilon),
-        full_loss_test=full_loss,
-        bb_loss_test=bb_loss,
-        loss_train=loss_train.mean().item(),
-        loss_test=loss_test.mean().item(),
-        proxy_fidelity=proxy_fidelity,
-        proxy_coverage=metrics.calculate_coverage(reduced_L < global_epsilon),
-        proxy_stability=expanded_L[torch.arange(expanded_L.shape[0])[:, None], nn]
-        .mean()
-        .item(),
-    )
-
-    return res
 
 
 def subsample_explainer(explainer: lm.Explainer, n: int) -> lm.Explainer:

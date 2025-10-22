@@ -2,7 +2,6 @@ import os
 import openml
 import numpy as np
 import pandas as pd
-from dotenv import load_dotenv
 from scipy.io import arff
 from pathlib import Path
 from urllib.request import urlretrieve
@@ -17,6 +16,12 @@ import kagglehub
 import re
 from sklearn.preprocessing import OneHotEncoder
 from itertools import combinations
+from configparser import ConfigParser
+
+curr_path = Path(__file__)
+config = ConfigParser()
+config.read(str(curr_path.parent.parent.parent / "config.ini"))
+apikey = config["Keys"]["OPENML_APIKEY"]
 
 
 def find_path(dir_name: str = "data") -> Path:
@@ -29,15 +34,9 @@ def find_path(dir_name: str = "data") -> Path:
 
 
 def _get_dataset(
-    apikey: str = None, id: int = None, cache_dir: Union[str, Path] = None
+    id: int = None, cache_dir: Union[str, Path] = None
 ) -> openml.OpenMLDataset:
     """Fetch dataset from OpenML API and store it in cache directory."""
-    # Load API key from environment variable if not provided, and check if it's available
-    if apikey is None:
-        load_dotenv()
-        apikey = os.getenv("OPENML_APIKEY")
-    if not apikey:
-        raise ValueError("API key is required.")
 
     # Set the API key, and cache directory for OpenML connector
     openml.config.apikey = apikey
@@ -53,18 +52,11 @@ def _get_dataset(
 
 
 def _get_predictions(
-    apikey: str = None,
     id: int = None,
     columns: Sequence[str] = None,
     cache_dir: Union[str, Path] = None,
 ) -> np.ndarray:
     """Fetch predictions from OpenML API and store them in cache directory."""
-    # Load API key from environment variable if not provided, and check if it's available
-    if apikey is None:
-        load_dotenv()
-        apikey = os.getenv("OPENML_APIKEY")
-    if not apikey:
-        raise ValueError("API key is required.")
 
     # Set the API key for OpenML connector, and create the cache directory if it doesn't exist
     openml.config.apikey = apikey
@@ -571,3 +563,126 @@ def get_rsynth(
     X = StandardScaler().fit_transform(X)
     y = (B[j, :-1] * X).sum(axis=1) + e + B[j, -1]
     return j, X, y, B
+
+
+def get_churn(
+    blackbox: Optional[Literal["rf"]] = None,
+    names: bool = False,
+    normalise: bool = True,
+    data_dir: str = "data",
+) -> Tuple[np.ndarray, np.ndarray, Optional[List[str]]]:
+    # https://archive.ics.uci.edu/ml/datasets/spambase
+    dir = find_path(data_dir)
+    dataset = _get_dataset(40701, dir)
+    X, y, _, attribute_names = dataset.get_data(
+        target=dataset.default_target_attribute, dataset_format="dataframe"
+    )
+    cat_columns = X.select_dtypes(["category"]).columns
+    X[cat_columns] = X[cat_columns].apply(lambda x: x.cat.codes)
+    X, y = X.to_numpy(), y.to_numpy().astype(int)
+    if blackbox is None:
+        Y = np.eye(2, dtype=X.dtype)[y]
+    else:
+        raise Exception(f"Unimplemented black box for spam: '{blackbox}'")
+    if normalise:
+        X = StandardScaler().fit_transform(X)
+    if names:
+        return X, Y, attribute_names
+    else:
+        return X, Y
+
+
+def get_telescope(
+    blackbox: Optional[Literal["svc"]] = None,
+    names: bool = False,
+    normalise: bool = True,
+    data_dir: str = "data",
+) -> Tuple[np.ndarray, np.ndarray, Optional[List[str]]]:
+    # https://archive.ics.uci.edu/ml/datasets/spambase
+    dir = find_path(data_dir)
+    dataset = _get_dataset(1120, dir)
+    X, y, _, attribute_names = dataset.get_data(
+        target=dataset.default_target_attribute, dataset_format="dataframe"
+    )
+    X, y = X.to_numpy(), (y == "g").astype(int).to_numpy()
+    if blackbox is None:
+        Y = np.eye(2, dtype=X.dtype)[y]
+    else:
+        raise Exception(f"Unimplemented black box for telescope: '{blackbox}'")
+    if normalise:
+        X = StandardScaler().fit_transform(X)
+    if names:
+        return X, Y, attribute_names
+    else:
+        return X, Y
+
+
+def get_adult(
+    blackbox: Optional[Literal["nn"]] = None,
+    names: bool = False,
+    normalise: bool = True,
+    data_dir: str = "data",
+) -> Tuple[np.ndarray, np.ndarray, Optional[List[str]]]:
+    # https://archive.ics.uci.edu/ml/datasets/spambase
+    dir = find_path(data_dir)
+    dataset = _get_dataset(1590, dir)
+    X, y, _, attribute_names = dataset.get_data(
+        target=dataset.default_target_attribute, dataset_format="dataframe"
+    )
+    missing_vals = X.isna().any(axis=1)
+    X, y = X.loc[~missing_vals], y.loc[~missing_vals]
+    cat_columns = X.select_dtypes(["category"]).columns
+    X[cat_columns] = X[cat_columns].apply(lambda x: x.cat.codes)
+    X, y = X.to_numpy(), (y == ">50K").astype(int).to_numpy()
+    if blackbox is None:
+        Y = np.eye(2, dtype=X.dtype)[y]
+    else:
+        raise Exception(f"Unimplemented black box for telescope: '{blackbox}'")
+    if normalise:
+        X = StandardScaler().fit_transform(X)
+    if names:
+        return X, Y, attribute_names
+    else:
+        return X, Y
+
+
+def get_spam(
+    blackbox: Optional[Literal["rf"]] = None,
+    names: bool = False,
+    normalise: bool = True,
+    data_dir: str = "data",
+) -> Tuple[np.ndarray, np.ndarray, Optional[List[str]]]:
+    # https://archive.ics.uci.edu/ml/datasets/spambase
+    dir = find_path(data_dir)
+    dataset = _get_dataset(44, dir)
+    X, y, _, attribute_names = dataset.get_data(
+        target=dataset.default_target_attribute, dataset_format="dataframe"
+    )
+    X, y = X.to_numpy(), y.to_numpy().astype(int)
+    X = X / np.max(X, 0, keepdims=True)
+    if blackbox is None:
+        Y = np.eye(2, dtype=X.dtype)[y]
+    elif blackbox.lower() in ("rf", "random forest", "randomforest"):
+        Y = _get_predictions(9132654, (f"confidence.{c:d}" for c in range(2)), dir)
+    else:
+        raise Exception(f"Unimplemented black box for spam: '{blackbox}'")
+    if normalise:
+        X = StandardScaler().fit_transform(X)
+    if names:
+        return X, Y, attribute_names
+    else:
+        return X, Y
+
+
+if __name__ == "__main__":
+    print("Downloading all datasets...")
+    get_airquality()
+    get_spam("rf")
+    get_higgs("gb")
+    get_qm9("nn")
+    get_jets("rf")
+    get_life("nn")
+    get_vehicle(None)
+    get_adult(None)
+    get_churn(None)
+    get_telescope(None)

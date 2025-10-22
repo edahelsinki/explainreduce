@@ -27,7 +27,7 @@ from slisemap.utils import softmax_column_kernel, softmax_row_kernel, squared_di
 OUTPUT_DIR = RESULTS_DIR / "hyperparam_optim"
 
 import explainreduce.localmodels as lm
-import data
+import utils.data as data
 from slisemap import Slisemap
 from slisemap.local_models import LinearRegression, LogisticRegression
 from slisemap.slipmap import Slipmap

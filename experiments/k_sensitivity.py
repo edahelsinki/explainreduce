@@ -38,6 +38,7 @@ import torch
 import explainreduce.localmodels as lm
 import explainreduce.proxies as px
 from functools import partial
+import explainreduce.metrics as metrics
 
 OUTPUT_DIR = RESULTS_DIR / "k_sensitivity"
 
@@ -218,6 +219,79 @@ def get_optimisation_method(k: int, explainer: lm.Explainer):
     }
 
 
+def eval_proxy_method_k_sensitivity(
+    job_id,
+    dname,
+    expname,
+    explainer,
+    pname,
+    proxy_method,
+    k,
+    global_epsilon,
+    X,
+    X_test,
+    y,
+    y_test,
+    yhat_test,
+    loss_fn,
+    L,
+    full_fidelity,
+    full_loss,
+    bb_loss,
+    nn,
+):
+    print(
+        f"Reducing: {dname} - {expname} - {pname} - k={k}",
+        flush=True,
+    )
+    try:
+        proxies = proxy_method(explainer, epsilon=global_epsilon)
+    except ValueError as ve:
+        print(f"Reduction method resulted in error:\n", ve, flush=True)
+        return
+    print(
+        f"Evaluating: {dname} - {expname} - {pname} - k={k}",
+        flush=True,
+    )
+
+    # Calculate the loss of the proxy model on the training set
+    prx_yhat_train = proxies.predict(X)
+    loss_train = loss_fn(torch.as_tensor(y), prx_yhat_train)
+
+    # Calculate the loss of the proxy model on the testing set, and the test fidelity
+    prx_yhat_test = proxies.predict(X_test)
+    loss_test = loss_fn(torch.as_tensor(y_test), prx_yhat_test)
+    proxy_fidelity = loss_fn(torch.as_tensor(yhat_test), prx_yhat_test).mean().item()
+
+    # Get the loss matrix of the proxy model, and the expanded loss matrix
+    reduced_L = proxies.get_L()
+    expanded_L = reduced_L[list(proxies.mapping.values()), :]
+
+    # Get the results
+    res = dict(
+        job=job_id,
+        data=dname,
+        exp_method=expname,
+        proxy_method=pname,
+        k=len(proxies.local_models),
+        epsilon=global_epsilon,
+        full_fidelity=full_fidelity,
+        full_stability=L[torch.arange(L.shape[0])[:, None], nn].mean().item(),
+        full_coverage=metrics.calculate_coverage(L < global_epsilon),
+        full_loss_test=full_loss,
+        bb_loss_test=bb_loss,
+        loss_train=loss_train.mean().item(),
+        loss_test=loss_test.mean().item(),
+        proxy_fidelity=proxy_fidelity,
+        proxy_coverage=metrics.calculate_coverage(reduced_L < global_epsilon),
+        proxy_stability=expanded_L[torch.arange(expanded_L.shape[0])[:, None], nn]
+        .mean()
+        .item(),
+    )
+
+    return res
+
+
 def evaluate_k_sensitivity(job_id: int, ks: list[int]) -> None:
     """Evaluate the full set of optimisation problems."""
     print(f"Begin job {job_id}.", flush=True)
@@ -330,7 +404,16 @@ def evaluate_k_sensitivity(job_id: int, ks: list[int]) -> None:
                     ).any()
                 ):
                     continue
-                # Evaluate the proxy method and store results
+                if expname == "GlobalLinear" and k > 1:
+                    continue
+                if "max_ball_coverage" in pname and not explainer.classifier:
+                    continue
+                if "glocalx" in pname and not ("LORERule" in str(explainer.__class__)):
+                    continue
+                if "submodular_pick" in pname and not (
+                    "LIME" in str(explainer.__class__)
+                ):
+                    continue
                 res = eval_proxy_method_k_sensitivity(
                     job_id,
                     dname,

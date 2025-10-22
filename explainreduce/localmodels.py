@@ -26,8 +26,7 @@ from configparser import ConfigParser
 
 curr_path = Path(__file__)
 config = ConfigParser()
-with open(curr_path.parent.parent / "config.ini", "r") as cf:
-    config.read(cf)
+config.read(str(curr_path.parent.parent / "config.ini"))
 GLOCALX_PATH = config["Paths"]["GLOCALX_PATH"]
 sys.path.append(GLOCALX_PATH)
 

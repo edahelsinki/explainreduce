@@ -13,28 +13,36 @@ Preprint of the ExplainReduce paper
 > Arxiv preprint [https://arxiv.org/abs/2502.10311](https://arxiv.org/abs/2502.10311).
 
 ## Installation
+ExplainReduce requires Python 3, version 3.11 or greater.
 To install python, follow the instructions from the official website of [Python](https://www.python.org/downloads/).
-To install the package, follow the instructions:
-1. Create a virtual environment (Optional)
-   ```bash
-    # Create a virtual environment
-    python -m venv venv
-    
-    # Activate the environment
-    # Windows:
-    .\venv\Scripts\activate
-    # macOS/Linux:
-    source venv/bin/activate
-    ```
-2. Clone the repository
-   ```bash
-    git clone $url_of_this_repository_from_github
-    cd explainreduce
-    ```
-3. Install dependencies
-   ```bash
-    pip install -r requirements.txt
-    ```
+For package management, we recommend the [uv](https://docs.astral.sh/uv/) package manager.
+You can install the dependencies by running
+```
+uv sync
+```
+after cloning the repository.
+Alternatively, install the requirements via pip with
+```
+pip3 install -r requirements.txt
+```
+
+Additionally, clone the [GLocalX repository](https://github.com/msetzu/glocalx) using
+```
+git clone git@github.com:msetzu/glocalx.git
+```
+and enter the path to that directory to `config.ini`:
+```
+[Paths]
+GLOCALX_PATH = /your/path/to/glocalx
+```
+
+Finally, for downloading [OpenML](https://www.openml.org/) datasets, add your OpenML API key to `config.ini`:
+```
+[Keys]
+OPENML_APIKEY = your_openml_api_key
+```
+
+
 ## Example
 A simple example of the idea behind ExplainReduce. A black-box model (left) can have many local explanations (middle), but ExplainReduce can reduce the size of the local explanation set to get a global explanation consisting of two simple models (right).
 <br><br>
