@@ -28,7 +28,8 @@ curr_path = Path(__file__)
 config = ConfigParser()
 with open(curr_path.parent.parent / "config.ini", "r") as cf:
     config.read(cf)
-sys.path.append(config["Paths"]["GLOCALX_PATH"])
+GLOCALX_PATH = config["Paths"]["GLOCALX_PATH"]
+sys.path.append(GLOCALX_PATH)
 
 
 class Explainer(ABC):
@@ -655,6 +656,15 @@ class GlobalLinearExplainer(Explainer):
 
 
 class LORERuleExplainer(Explainer):
+    try:
+        from models import Rule
+    except ModuleNotFoundError as e:
+        e.add_note("Importing GLocalX failed.")
+        e.add_note(
+            f"Ensure GLocalX path is set correctly in config.ini (currently {GLOCALX_PATH})."
+        )
+        raise
+
     def __init__(
         self,
         X: torch.Tensor,
