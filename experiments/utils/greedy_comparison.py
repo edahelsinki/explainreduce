@@ -271,18 +271,6 @@ def get_explainer(dname, bb, cls):
         "SLISEMAP": partial(
             lm.SLISEMAPExplainer, classifier=cls, **get_params("SLISEMAP", dname, bb)
         ),
-        #         "SLIPMAP": partial(
-        #             lm.SLIPMAPExplainer, classifier=cls, **get_params("SLIPMAP", dname, bb)
-        #         ),
-        # "VanillaGrad": partial(
-        #     lm.VanillaGradExplainer,
-        #     classifier=cls,
-        # ),
-        # "SmoothGrad": partial(
-        # lm.SmoothGradExplainer,
-        # classifier=cls,
-        # **get_params("SmoothGrad", dname, bb),
-        # ),
         "LIME": partial(
             lm.LIMEExplainer, classifier=cls, **get_params("LIME", dname, bb)
         ),

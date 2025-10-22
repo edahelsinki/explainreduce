@@ -31,6 +31,7 @@ from utils.utils import (
     read_parquet,
     get_explainer,
     reduce,
+    get_explanation_radius,
 )
 import operator
 from utils.hyperparameters import get_data, get_bb
@@ -176,19 +177,6 @@ def plot_results_full(df: pd.DataFrame):
     original_size = fig.get_size_inches()
     fig.set_size_inches(original_size[0], original_size[1] * 5 / 8)
     plt.savefig(MANUSCRIPT_DIR / "fidelity_k_full.pdf", dpi=600)
-
-
-def get_explanation_radius(explainer: lm.Explainer):
-    if "LIMEExplainer" in str(explainer.__class__):
-        return 2 * explainer.explainer_kwargs["kernel_width"]
-    elif "SLISEMAP" in str(explainer.__class__) or "SLIPMAP" in str(
-        explainer.__class__
-    ):
-        return 0.1 * explainer.explainer_kwargs["radius"]
-    elif "Smoothgrad" in str(explainer.__class__):
-        return explainer.explainer_kwargs["noise_level"]
-    else:
-        return 0.5
 
 
 def get_optimisation_method(k: int, explainer: lm.Explainer):
