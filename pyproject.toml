@@ -3,7 +3,7 @@ name = "summer2024"
 version = "0.1.0"
 description = "ExplainReduce experiments repo dependencies"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "deap>=1.4.3",
     "ipdb>=0.13.13",
