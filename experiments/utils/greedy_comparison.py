@@ -21,7 +21,7 @@ from project_paths import MANUSCRIPT_DIR, RESULTS_DIR
 import pandas as pd
 import operator
 from functools import reduce
-from experiment.utils.hyperparameters import get_bb, get_data, get_params
+from hyperparameters import get_bb, get_data, get_params
 from typing import List
 from timeit import default_timer as timer
 

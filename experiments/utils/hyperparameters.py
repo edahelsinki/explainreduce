@@ -86,13 +86,19 @@ def get_bb(bb, cls, X, y, dname=None):
             pred_fn = m.predict
     elif bb == "Neural Network":
         if cls:
-            m = MLPClassifier((64, 32, 16), random_state=42, early_stopping=True)
+            m = MLPClassifier(
+                hidden_layer_sizes=(64, 32, 16), random_state=42, early_stopping=True
+            )
             m.fit(X, y)
             pred_fn = m.predict_proba
         else:
             if y.ndim == 2:
                 y = y.ravel()
-            m = MLPRegressor((128, 64, 32, 16), random_state=42, early_stopping=True)
+            m = MLPRegressor(
+                hidden_layer_sizes=(128, 64, 32, 16),
+                random_state=42,
+                early_stopping=True,
+            )
             m.fit(X, y)
             pred_fn = m.predict
     else:
@@ -104,6 +110,12 @@ def get_data(differentiable=False):
     """Get data dictionary in the form of dset name:  (X, y, bb_name, classification)"""
     return {
         # use lambdas for lazy loading
+        "Life Expectancy": lambda: (
+            *data.get_life(blackbox=None),
+            "Neural Network",
+            False,
+        ),
+        "Vehicles": lambda: (*data.get_vehicle(blackbox=None), "SVM", False),
         "Synthetic": lambda: (
             *data.get_rsynth(N=5000, k=5, s=2.0)[1:3],
             "Random Forest",
@@ -112,14 +124,12 @@ def get_data(differentiable=False):
         "Air Quality": lambda: (*data.get_airquality(), "Random Forest", False),
         "Gas Turbine": lambda: (*data.get_gas_turbine(), "AdaBoost", False),
         "QM9": lambda: (*data.get_qm9(), "Neural Network", False),
+        "Adult": lambda: (*data.get_adult(), "Neural Network", True),
         "Higgs": lambda: (*data.get_higgs(), "Gradient Boosting", True),
         "Jets": lambda: (*data.get_jets(), "Random Forest", True),
-        "Life Expectancy": lambda: (
-            *data.get_life(blackbox=None),
-            "Neural Network",
-            False,
-        ),
-        "Vehicles": lambda: (*data.get_vehicle(blackbox=None), "SVM", False),
+        "Spam": lambda: (*data.get_spam(), "Gradient Boosting", True),
+        "Churn": lambda: (*data.get_churn(), "Random Forest", True),
+        "Telescope": lambda: (*data.get_telescope(), "Neural Network", True),
     }
 
 
@@ -132,7 +142,49 @@ def get_hyperopts():
         "LIME": hyperopt_lime,
         # "SHAP": hyperopt_shap,
         "SmoothGrad": hyperopt_smoothgrad,
+        "GlobalLinear": hyperopt_linear,
     }
+
+
+def hyperopt_linear(
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    classifier,
+    model=None,
+    n_calls=15,
+    random_state=42,
+    verbose=False,
+):
+    space = [
+        Real(0.001, 10.0, prior="log-uniform", name="lasso"),
+        Real(0.0001, 1.0, prior="log-uniform", name="ridge"),
+    ]
+
+    @use_named_args(space)
+    def objective(**params):
+        exp = lm.GlobalLinearExplainer(
+            X_train, y_train, classifier, dtype=torch.float64, **params
+        )
+        exp.fit()
+        yhat = exp.predict(torch.as_tensor(X_test, dtype=exp.dtype))
+        return exp.loss_fn(yhat, y_test).mean().item()
+
+    res = gp_minimize(
+        objective,
+        space,
+        n_calls=n_calls,
+        n_initial_points=min(10, max(3, (n_calls - 1) // 3 + 1)),
+        random_state=42,
+    )
+    params = {}
+    for s, v in zip(space, res.x):
+        params[s.name] = v
+    if verbose:
+        print("Final parameter values:", params)
+
+    return params
 
 
 def hyperopt_smoothgrad(
@@ -244,7 +296,12 @@ def hyperopt_lime(
     @use_named_args(space)
     def objective(**params):
         exp = lm.LIMEExplainer(
-            X_train, y_train, classifier, black_box_model=model, **params
+            X_train,
+            y_train,
+            classifier,
+            black_box_model=model,
+            num_samples=500,
+            **params,
         )
         exp.fit()
         yhat = exp.predict(X_test)

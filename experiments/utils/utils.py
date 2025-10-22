@@ -111,27 +111,30 @@ def prepare_data(dataset_fun, seed, n_total=10_000, n_exp=500):
 
 
 def get_explainer(dname, bb, cls):
-    """Define the explainers to be used in the experiments."""
-    return {
-        "SLISEMAP": partial(
-            lm.SLISEMAPExplainer, classifier=cls, **get_params("SLISEMAP", dname, bb)
-        ),
-        "SLIPMAP": partial(
-            lm.SLIPMAPExplainer, classifier=cls, **get_params("SLIPMAP", dname, bb)
-        ),
-        "SmoothGrad": partial(
-            lm.SmoothGradExplainer,
-            classifier=cls,
-            **get_params("SmoothGrad", dname, bb),
-        ),
-        "LIME": partial(
-            lm.LIMEExplainer, classifier=cls, **get_params("LIME", dname, bb)
-        ),
-        "SHAP": partial(
-            lm.KernelSHAPExplainerLegacy,
-            classifier=cls,
-        ),
+    exp_methods = {
+        "SLISEMAP": lm.SLISEMAPExplainer,
+        "SLIPMAP": lm.SLIPMAPExplainer,
+        "SmoothGrad": lm.SmoothGradExplainer,
+        "LIME": lm.LIMEExplainer,
+        "SHAP": lm.KernelSHAPExplainerLegacy,
+        "GlobalLinear": lm.GlobalLinearExplainer,
     }
+    if cls:
+        exp_methods["LORE"] = lm.LORERuleExplainer
+    out = {}
+    for exp, model_obj in exp_methods.items():
+        if exp not in ["SHAP", "LORE"]:
+            params = get_params(exp, dname, bb)
+            if params is not None:
+                out[exp] = partial(model_obj, classifier=cls, **params)
+            else:
+                print(
+                    f"Did not find hyperparams for {dname} - {bb} - {exp}, please run hyperopt first!",
+                    flush=True,
+                )
+        else:
+            out[exp] = partial(model_obj, classifier=cls)
+    return out
 
 
 def get_explanation_radius(explainer: lm.Explainer):
