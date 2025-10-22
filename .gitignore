@@ -498,3 +498,4 @@ plots/
 *.pptx
 
 config.ini
+uv.lock
