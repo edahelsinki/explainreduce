@@ -26,7 +26,8 @@ Alternatively, install the requirements via pip with
 pip3 install -r requirements.txt
 ```
 
-Additionally, clone the [GLocalX repository](https://github.com/msetzu/glocalx) using
+Next, create a copy of `config.template` named `config.ini` at the root of this repository.
+Clone the [GLocalX repository](https://github.com/msetzu/glocalx) using
 ```
 git clone git@github.com:msetzu/glocalx.git
 ```
