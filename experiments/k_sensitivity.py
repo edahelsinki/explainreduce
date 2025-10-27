@@ -224,6 +224,7 @@ def eval_proxy_method_k_sensitivity(
     loss_fn,
     L,
     full_fidelity,
+    full_fidelity_train,
     full_loss,
     bb_loss,
     nn,
@@ -243,13 +244,14 @@ def eval_proxy_method_k_sensitivity(
     )
 
     # Calculate the loss of the proxy model on the training set
-    prx_yhat_train = proxies.predict(X)
+    prx_yhat_train = proxies.predict_train()
     loss_train = loss_fn(torch.as_tensor(y), prx_yhat_train)
 
     # Calculate the loss of the proxy model on the testing set, and the test fidelity
     prx_yhat_test = proxies.predict(X_test)
     loss_test = loss_fn(torch.as_tensor(y_test), prx_yhat_test)
     proxy_fidelity = loss_fn(torch.as_tensor(yhat_test), prx_yhat_test).mean().item()
+    proxy_fidelity_train = loss_fn(torch.as_tensor(proxies.y), prx_yhat_train)
 
     # Get the loss matrix of the proxy model, and the expanded loss matrix
     reduced_L = proxies.get_L()
@@ -264,14 +266,24 @@ def eval_proxy_method_k_sensitivity(
         k=len(proxies.local_models),
         epsilon=global_epsilon,
         full_fidelity=full_fidelity,
+        full_fidelity_train=full_fidelity_train.mean().item(),
         full_stability=L[torch.arange(L.shape[0])[:, None], nn].mean().item(),
         full_coverage=metrics.calculate_coverage(L < global_epsilon),
+        full_coverage_train=(full_fidelity_train < global_epsilon)
+        .to(explainer.dtype)
+        .mean()
+        .item(),
         full_loss_test=full_loss,
         bb_loss_test=bb_loss,
         loss_train=loss_train.mean().item(),
         loss_test=loss_test.mean().item(),
         proxy_fidelity=proxy_fidelity,
+        proxy_fidelity_train=proxy_fidelity_train.mean().item(),
         proxy_coverage=metrics.calculate_coverage(reduced_L < global_epsilon),
+        proxy_coverage_train=(proxy_fidelity_train < global_epsilon)
+        .to(proxies.dtype)
+        .mean()
+        .item(),
         proxy_stability=expanded_L[torch.arange(expanded_L.shape[0])[:, None], nn]
         .mean()
         .item(),
@@ -346,9 +358,10 @@ def evaluate_k_sensitivity(job_id: int, ks: list[int]) -> None:
             explainer = expfn(X, yhat, black_box_model=m)
             explainer.fit()
 
-            # Get the explanation matrix and make predictions on the test set
+            # Get the explanation matrix and make predictions on the test and train sets
             L = explainer.get_L()
             explainer_yhat_test = explainer.predict(X_test)
+            explainer_yhat_train = explainer.predict_train()
 
             # Compute fidelity and loss metrics
             full_fidelity = (
@@ -358,6 +371,10 @@ def evaluate_k_sensitivity(job_id: int, ks: list[int]) -> None:
                 )
                 .mean()
                 .item()
+            )
+            full_fidelity_train = loss_fn(
+                torch.as_tensor(yhat),
+                explainer_yhat_train,
             )
             full_loss = (
                 loss_fn(
@@ -419,6 +436,7 @@ def evaluate_k_sensitivity(job_id: int, ks: list[int]) -> None:
                     loss_fn,
                     L,
                     full_fidelity,
+                    full_fidelity_train,
                     full_loss,
                     bb_loss,
                     nn,

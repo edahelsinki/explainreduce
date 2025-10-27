@@ -653,6 +653,22 @@ class GlobalLinearExplainer(Explainer):
     def _generate_vector_representation(self) -> torch.Tensor:
         return self.B.repeat(self.X.shape[0], 1)
 
+    def black_box_predict(self):
+        """Use associated black box model for predictions."""
+        if self.black_box_model is None:
+            raise ValueError("Black-box model not set!")
+        if (self.classifier) and (hasattr(self.black_box_model, "predict_proba")):
+            return self.black_box_model.predict_proba
+        else:
+            return self.black_box_model.predict
+
+    def predict_train(self):
+        """Convenience method to generate predictions on the train set."""
+        yhat = torch.zeros_like(self.y)
+        for i in range(self.X.shape[0]):
+            yhat[i, :] = self.local_models[self.mapping[i]](self.X[i, None])
+        return yhat
+
 
 class LORERuleExplainer(Explainer):
     try:
