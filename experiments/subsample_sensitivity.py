@@ -401,7 +401,7 @@ def evaluate_subsample_sensitivity(job_id: int, ns: list[int]) -> None:
 
             print("Loop over n values.")
             ks = [5]
-            k_options = [get_optimisation_method(k=k) for k in ks]
+            k_options = [get_optimisation_method(k=k, explainer=explainer) for k in ks]
             k_options = reduce(operator.ior, k_options, {})
             for (pname, k), proxy_method in k_options.items():
                 for n in ns:

@@ -35,6 +35,8 @@ from slisemap.tuning import hyperparameter_tune
 from skopt import gp_minimize
 from skopt.utils import use_named_args
 from skopt.space import Real
+from typing import Optional, Dict
+import warnings
 
 
 def get_bb(bb, cls, X, y, dname=None):
@@ -442,19 +444,79 @@ def _eval_hyperparams(
     return results
 
 
-def get_params(method, data, black_box):
+def get_params(
+    method, data, black_box, error_on_missing=False
+) -> Optional[Dict[str, np.float64]]:
     if black_box is None:
         black_box = ""
-    try:
-        return PARAM_CACHE[(method, data, black_box)]
-    except:
-        raise NotImplementedError(
-            f"No cached parameters for {method} & {data} & {black_box}"
-        )
+    out = PARAM_CACHE.get((method, data, black_box))
+    if out is None:
+        if error_on_missing:
+            raise NotImplementedError(
+                f"No cached parameters for {method} & {data} & {black_box}"
+            )
+        else:
+            warnings.warn(f"No cached parameters for {method} & {data} & {black_box}")
+    return out
 
 
 PARAM_CACHE = {
+    ("GlobalLinear", "Adult", "Neural Network"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Air Quality", "Random Forest"): {
+        "lasso": np.float64(0.00212),
+        "ridge": np.float64(0.01346),
+    },
+    ("GlobalLinear", "Churn", "Random Forest"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Gas Turbine", "AdaBoost"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00089),
+    },
+    ("GlobalLinear", "Higgs", "Gradient Boosting"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00015),
+    },
+    ("GlobalLinear", "Jets", "Random Forest"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Life Expectancy", "Neural Network"): {
+        "lasso": np.float64(0.00303),
+        "ridge": np.float64(0.00228),
+    },
+    ("GlobalLinear", "QM9", "Neural Network"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Spam", "Gradient Boosting"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Synthetic", "Neural Network"): {
+        "lasso": np.float64(0.00197),
+        "ridge": np.float64(0.00046),
+    },
+    ("GlobalLinear", "Synthetic", "Random Forest"): {
+        "lasso": np.float64(0.00283),
+        "ridge": np.float64(0.0063),
+    },
+    ("GlobalLinear", "Telescope", "Neural Network"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Vehicles", "SVM"): {
+        "lasso": np.float64(0.00159),
+        "ridge": np.float64(0.00486),
+    },
+    ("LIME", "Adult", "Neural Network"): {"kernel_width": np.float64(0.32413)},
     ("LIME", "Air Quality", "Random Forest"): {"kernel_width": np.float64(0.35037)},
+    ("LIME", "Air Quality", "SVM"): {"kernel_width": np.float64(0.35324)},
+    ("LIME", "Churn", "Random Forest"): {"kernel_width": np.float64(0.77247)},
     ("LIME", "Gas Turbine", "AdaBoost"): {"kernel_width": np.float64(0.41508)},
     ("LIME", "Higgs", "Gradient Boosting"): {"kernel_width": np.float64(1.86389)},
     ("LIME", "Jets", "Random Forest"): {"kernel_width": np.float64(0.22913)},
@@ -462,12 +524,31 @@ PARAM_CACHE = {
         "kernel_width": np.float64(0.56309)
     },
     ("LIME", "QM9", "Neural Network"): {"kernel_width": np.float64(0.77626)},
+    ("LIME", "Spam", "Gradient Boosting"): {"kernel_width": np.float64(0.65383)},
+    ("LIME", "Synthetic", "Neural Network"): {"kernel_width": np.float64(0.42561)},
     ("LIME", "Synthetic", "Random Forest"): {"kernel_width": np.float64(2.94358)},
+    ("LIME", "Telescope", "Neural Network"): {"kernel_width": np.float64(0.51333)},
+    ("LIME", "Telescope", "SVM"): {"kernel_width": np.float64(0.48354)},
     ("LIME", "Vehicles", "SVM"): {"kernel_width": np.float64(0.3894)},
+    ("SLIPMAP", "Adult", "Neural Network"): {
+        "lasso": np.float64(0.00237),
+        "ridge": np.float64(0.00011),
+        "radius": np.float64(1.53422),
+    },
     ("SLIPMAP", "Air Quality", "Random Forest"): {
         "lasso": np.float64(0.0512),
         "ridge": np.float64(0.00469),
         "radius": np.float64(1.64729),
+    },
+    ("SLIPMAP", "Air Quality", "SVM"): {
+        "lasso": np.float64(0.0247),
+        "ridge": np.float64(0.27907),
+        "radius": np.float64(1.97165),
+    },
+    ("SLIPMAP", "Churn", "Random Forest"): {
+        "lasso": np.float64(0.64276),
+        "ridge": np.float64(0.3463),
+        "radius": np.float64(2.33486),
     },
     ("SLIPMAP", "Gas Turbine", "AdaBoost"): {
         "lasso": np.float64(0.20543),
@@ -494,19 +575,54 @@ PARAM_CACHE = {
         "ridge": np.float64(0.00044),
         "radius": np.float64(1.5),
     },
+    ("SLIPMAP", "Spam", "Gradient Boosting"): {
+        "lasso": np.float64(0.00264),
+        "ridge": np.float64(0.00012),
+        "radius": np.float64(1.66328),
+    },
+    ("SLIPMAP", "Synthetic", "Neural Network"): {
+        "lasso": np.float64(0.01262),
+        "ridge": np.float64(0.00017),
+        "radius": np.float64(3.72406),
+    },
     ("SLIPMAP", "Synthetic", "Random Forest"): {
         "lasso": np.float64(0.26804),
         "ridge": np.float64(0.00163),
         "radius": np.float64(2.37795),
+    },
+    ("SLIPMAP", "Telescope", "Neural Network"): {
+        "lasso": np.float64(0.00128),
+        "ridge": np.float64(0.00013),
+        "radius": np.float64(1.51015),
+    },
+    ("SLIPMAP", "Telescope", "SVM"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00014),
+        "radius": np.float64(1.73289),
     },
     ("SLIPMAP", "Vehicles", "SVM"): {
         "lasso": np.float64(0.01155),
         "ridge": np.float64(0.01002),
         "radius": np.float64(1.75377),
     },
+    ("SLISEMAP", "Adult", "Neural Network"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+        "radius": np.float64(3.5),
+    },
     ("SLISEMAP", "Air Quality", "Random Forest"): {
         "lasso": np.float64(0.00147),
         "ridge": np.float64(0.0001),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Air Quality", "SVM"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Churn", "Random Forest"): {
+        "lasso": np.float64(0.0041),
+        "ridge": np.float64(0.00012),
         "radius": np.float64(3.5),
     },
     ("SLISEMAP", "Gas Turbine", "AdaBoost"): {
@@ -534,9 +650,29 @@ PARAM_CACHE = {
         "ridge": np.float64(0.0001),
         "radius": np.float64(3.5),
     },
+    ("SLISEMAP", "Spam", "Gradient Boosting"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00107),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Synthetic", "Neural Network"): {
+        "lasso": np.float64(0.01272),
+        "ridge": np.float64(0.00033),
+        "radius": np.float64(3.5),
+    },
     ("SLISEMAP", "Synthetic", "Random Forest"): {
         "lasso": np.float64(0.272),
         "ridge": np.float64(0.00424),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Telescope", "Neural Network"): {
+        "lasso": np.float64(0.00101),
+        "ridge": np.float64(0.00025),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Telescope", "SVM"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00011),
         "radius": np.float64(3.5),
     },
     ("SLISEMAP", "Vehicles", "SVM"): {
@@ -544,9 +680,17 @@ PARAM_CACHE = {
         "ridge": np.float64(0.0001),
         "radius": np.float64(3.5),
     },
+    ("SmoothGrad", "Adult", "Neural Network"): {
+        "perturbation": np.float64(0.00081),
+        "noise_level": np.float64(0.99997),
+    },
     ("SmoothGrad", "Air Quality", "Random Forest"): {
         "perturbation": np.float64(0.00078),
         "noise_level": np.float64(0.1916),
+    },
+    ("SmoothGrad", "Churn", "Random Forest"): {
+        "perturbation": np.float64(0.00098),
+        "noise_level": np.float64(0.58307),
     },
     ("SmoothGrad", "Gas Turbine", "AdaBoost"): {
         "perturbation": np.float64(0.0008),
@@ -568,16 +712,27 @@ PARAM_CACHE = {
         "perturbation": np.float64(0.00068),
         "noise_level": np.float64(0.24786),
     },
+    ("SmoothGrad", "Spam", "Gradient Boosting"): {
+        "perturbation": np.float64(1e-05),
+        "noise_level": np.float64(0.95722),
+    },
+    ("SmoothGrad", "Synthetic", "Neural Network"): {
+        "perturbation": np.float64(0.00067),
+        "noise_level": np.float64(0.22836),
+    },
     ("SmoothGrad", "Synthetic", "Random Forest"): {
         "perturbation": np.float64(0.00073),
         "noise_level": np.float64(0.46207),
+    },
+    ("SmoothGrad", "Telescope", "Neural Network"): {
+        "perturbation": np.float64(0.00061),
+        "noise_level": np.float64(1.0),
     },
     ("SmoothGrad", "Vehicles", "SVM"): {
         "perturbation": np.float64(0.00053),
         "noise_level": np.float64(0.34992),
     },
 }
-
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
