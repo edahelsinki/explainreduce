@@ -373,7 +373,7 @@ def evaluate_k_sensitivity(job_id: int, ks: list[int]) -> None:
                 .item()
             )
             full_fidelity_train = loss_fn(
-                torch.as_tensor(yhat),
+                explainer.y,
                 explainer_yhat_train,
             )
             full_loss = (
