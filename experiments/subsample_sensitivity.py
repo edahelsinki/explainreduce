@@ -238,7 +238,9 @@ def plot_n_sensitivity_full(df: pd.DataFrame):
             style="Reduction method",
             kind="line",
             facet_kws={"sharey": False},
-            **paper_theme(aspect=1.2, cols=len(exp_methods), rows=len(datasets)),
+            **paper_theme(
+                aspect=1.2, cols=len(exp_methods), rows=len(datasets), scaling=0.6
+            ),
             palette=palette,
             dashes=style,
             legend=None,
@@ -296,7 +298,6 @@ def plot_n_sensitivity_full(df: pd.DataFrame):
             ncol=len(handles),
         )
         plt.savefig(MANUSCRIPT_DIR / f"n_sensitivity_full_{dataset}.pdf", dpi=600)
-        plt.show()
 
 
 def get_optimisation_method(k: int = 5, explainer: lm.Explainer = None):
