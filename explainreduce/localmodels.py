@@ -389,6 +389,7 @@ class SmoothGradExplainer(Explainer):
             dtype=self.dtype,
             **self.explainer_kwargs,
         )
+        B = torch.nan_to_num(B)
         self.B = B
 
         def create_exp(i):
