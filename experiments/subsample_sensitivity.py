@@ -109,7 +109,9 @@ def plot_results(df: pd.DataFrame):
         style="Reduction method",
         kind="line",
         facet_kws={"sharey": False},
-        **paper_theme(aspect=1.6, cols=len(exp_methods), rows=len(datasets)),
+        **paper_theme(
+            aspect=1.6, cols=len(exp_methods), rows=len(datasets), scaling=1.2
+        ),
         legend=None,
     )
     i_f = 0
@@ -154,10 +156,10 @@ def plot_results(df: pd.DataFrame):
             )
         )
     g.figure.legend(handles=handles, title="Reduction method")
+    g.figure.tight_layout()
     g.figure.savefig(
         MANUSCRIPT_DIR / "fidelity_n_pres_smaller.pdf", dpi=600, bbox_inches="tight"
     )
-    g.figure.tight_layout()
 
 
 def plot_n_sensitivity_full(df: pd.DataFrame):

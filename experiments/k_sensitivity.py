@@ -44,22 +44,39 @@ import explainreduce.metrics as metrics
 OUTPUT_DIR = RESULTS_DIR / "k_sensitivity"
 
 
-def plot_results(df: pd.DataFrame):
+def plot_k_fidelity_coverage(df: pd.DataFrame):
     """Produce the small and large (appendix) plots for k-sensitivity."""
-    for f in OUTPUT_DIR.glob("**/*.parquet"):
-        try:
-            new_df = pq.ParquetFile(f).read().to_pandas()
-            if "0" in new_df.columns:
-                new_df = new_df.drop(["0"], axis=1)
-            df = pd.concat((new_df, df), ignore_index=True)
-        except Exception as e:
-            print(f"Failed to read {f}")
-            print(e)
-    df = rename_columns(df)
+    df.loc[:, "proxy_method_mod"] = "None"
+    df = df.loc[~df["proxy_method"].isna()]
+    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
+        "Min set"
+    )
+    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
+        "Exact Max coverage"
+    )
+    df.loc[
+        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
+    ] = "Max Coverage"
+    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
+    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = (
+        "Exact Min loss"
+    )
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
+    ] = "Min Loss"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
+        "proxy_method_mod",
+    ] = "Const Min Loss"
+    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
+    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
+    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
     exp_methods = ["LIME", "SHAP", "SLISEMAP"]
-    datasets = ["Gas Turbine", "Jets", "QM9"]
+    datasets = ["Gas Turbine", "Jets"]
+    reduction_methods = ["Min Loss", "Max Coverage", "Const Min Loss", "Random"]
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
+    p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
     p_df = p_df.sort_values(["data", "exp_method"])
     p_df.loc[:, "proxy fidelity/stability"] = (
         p_df["proxy_fidelity"] / p_df["proxy_stability"]
@@ -74,6 +91,7 @@ def plot_results(df: pd.DataFrame):
         ]
         .reset_index()
     )
+    # marker_dict = {k: marker_dict[i] for i, k in enumerate(p_df["Reduction method"].unique())}
     g = sns.relplot(
         p_df,
         x="k",
@@ -84,8 +102,9 @@ def plot_results(df: pd.DataFrame):
         style="Reduction method",
         kind="line",
         facet_kws={"sharey": False},
-        **paper_theme(cols=len(exp_methods), rows=len(datasets)),
+        **paper_theme(aspect=1.6, cols=len(exp_methods), rows=len(datasets)),
     )
+    g.set(yscale="log")
     i_f = 0
     for i, dname in enumerate(p_df["data"].unique()):
         # set ylims based on dataset
@@ -105,33 +124,106 @@ def plot_results(df: pd.DataFrame):
                 linestyle="--",
             )
             # g.axes[i, j].set_ylim((data_y_min, data_y_max))
-            g.axes[i, j].set_title(f"Dataset: {dname}, XAI: {exp_name}")
+            g.axes[i, j].set_title(f"{dname} (XAI: {exp_name})")
             i_f += 1
-    plt.savefig(MANUSCRIPT_DIR / "fidelity_k.pdf", dpi=600)
+
+    plt.savefig(MANUSCRIPT_DIR / "fidelity_k_smaller.pdf", dpi=600)
+    dname = "Gas Turbine"
+    spdf = p_df.loc[p_df["data"].isin([dname])]
+    spdf = spdf.loc[spdf["exp_method"].isin(["LIME", "SHAP", "SLISEMAP"])]
+    spdf = spdf[
+        [
+            "job",
+            "exp_method",
+            "data",
+            "Reduction method",
+            "proxy_coverage",
+            "proxy_stability",
+            "k",
+        ]
+    ].melt(["job", "exp_method", "data", "Reduction method", "k"])
+    g = sns.relplot(
+        spdf,
+        x="k",
+        y="value",
+        col="exp_method",
+        row="variable",
+        hue="Reduction method",
+        style="Reduction method",
+        kind="line",
+        facet_kws={"sharey": False},
+        **paper_theme(aspect=1.6, cols=3, rows=2),
+    )
+    for i, varname in enumerate(spdf["variable"].unique()):
+        # set ylims based on dataset
+        data_y_min, data_y_max = np.inf, -np.inf
+        for j, exp_name in enumerate(spdf["exp_method"].unique()):
+            y_min, y_max = g.axes[i, j].get_ylim()
+            variable_name = "coverage" if "coverage" in varname else "stability"
+            full_value = mean_df.loc[
+                (mean_df["data"] == dname) & (mean_df["exp_method"] == exp_name)
+            ][f"full_{variable_name}"].values[0]
+            if y_min < data_y_min:
+                data_y_min = y_min
+            if y_max > data_y_max:
+                data_y_max = y_max
+            y_max = max(y_max, full_value)
+        for j, exp_name in enumerate(spdf["exp_method"].unique()):
+            variable_name = "coverage" if "coverage" in varname else "stability"
+            full_value = mean_df.loc[
+                (mean_df["data"] == dname) & (mean_df["exp_method"] == exp_name)
+            ][f"full_{variable_name}"].values[0]
+            if j == 0:
+                if variable_name == "stability":
+                    g.axes[i, j].set_ylabel("Instability")
+                else:
+                    g.axes[i, j].set_ylabel("Coverage")
+            g.axes[i, j].axhline(full_value, color="k", linestyle="--")
+            g.axes[i, j].set_title(f"XAI: {exp_name}")
+    plt.savefig(MANUSCRIPT_DIR / "coverage_stability_k_smaller.pdf", dpi=600)
 
 
-def plot_results_full(df: pd.DataFrame):
+def plot_k_sensitivity_full(df: pd.DataFrame):
     """Produce the small and large (appendix) plots for k-sensitivity."""
-    for f in OUTPUT_DIR.glob("**/*.parquet"):
-        try:
-            new_df = pq.ParquetFile(f).read().to_pandas()
-            if "0" in new_df.columns:
-                new_df = new_df.drop(["0"], axis=1)
-            df = pd.concat((new_df, df), ignore_index=True)
-        except Exception as e:
-            print(f"Failed to read {f}")
-            print(e)
-    df = rename_columns(df)
-    exp_methods = ["LIME", "SHAP", "SLISEMAP", "SmoothGrad"]
+    df.loc[:, "proxy_method_mod"] = "None"
+    df = df.loc[~df["proxy_method"].isna()]
+    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
+        "Min set"
+    )
+    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
+        "Exact Max coverage"
+    )
+    df.loc[
+        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
+    ] = "Max Coverage"
+    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
+    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = (
+        "Exact Min loss"
+    )
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
+    ] = "Min Loss"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
+        "proxy_method_mod",
+    ] = "Const Min Loss"
+    exp_methods = ["LIME", "LORE", "SHAP", "SmoothGrad", "SLISEMAP"]
     datasets = df["data"].unique()
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
+    reduction_methods = ["Min Loss", "Max Coverage", "Const Min Loss", "Random"]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
+    p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
     p_df = p_df.sort_values(["data", "exp_method"])
     p_df.loc[:, "proxy fidelity/stability"] = (
         p_df["proxy_fidelity"] / p_df["proxy_stability"]
     )
     p_df = p_df.rename(
-        columns={"proxy_method_mod": "Reduction method", "proxy_fidelity": "Fidelity"}
+        columns={
+            "proxy_method_mod": "Reduction method",
+            "proxy_fidelity": "Fidelity",
+            "proxy_coverage": "Coverage",
+            "proxy_stability": "Stability",
+        }
     )
     mean_df = (
         p_df.groupby(["data", "exp_method"])
@@ -140,43 +232,101 @@ def plot_results_full(df: pd.DataFrame):
         ]
         .reset_index()
     )
-    g = sns.relplot(
-        p_df,
-        x="k",
-        y="Fidelity",
-        col="exp_method",
-        row="data",
-        hue="Reduction method",
-        style="Reduction method",
-        kind="line",
-        facet_kws={"sharey": False},
-    )
-    i_f = 0
-    for i, dname in enumerate(p_df["data"].unique()):
+    cmap = sns.color_palette("bright")
+    palette = {
+        key: value for key, value in zip(p_df["Reduction method"].unique(), cmap)
+    }
+    dash_list = sns._base.unique_dashes(p_df["Reduction method"].unique().size + 1)
+    style = {k: v for k, v in zip(p_df["Reduction method"].unique(), dash_list)}
+    classification_datasets = ["Telescope", "Adult", "Higgs", "Jets", "Spam", "Churn"]
+    for dataset in datasets:
+        if dataset in classification_datasets:
+            mask = p_df["data"] == dataset
+        else:
+            mask = (p_df["data"] == dataset) & (p_df["exp_method"] != "LORE")
+        spdf = p_df.loc[mask]
+        spdf = spdf[
+            [
+                "job",
+                "exp_method",
+                "data",
+                "Reduction method",
+                "Fidelity",
+                "Coverage",
+                "Stability",
+                "k",
+            ]
+        ].melt(["job", "exp_method", "data", "Reduction method", "k"])
+        g = sns.relplot(
+            spdf,
+            x="k",
+            y="value",
+            col="exp_method",
+            row="variable",
+            hue="Reduction method",
+            style="Reduction method",
+            kind="line",
+            facet_kws={"sharey": False},
+            **paper_theme(aspect=1.2, cols=len(exp_methods), rows=len(datasets)),
+            palette=palette,
+            dashes=style,
+            legend=None,
+        )
+        i_f = 0
+        # for i, dname in enumerate(p_df["data"].unique()):
         # set ylims based on dataset
-        data_y_min, data_y_max = np.inf, -np.inf
-        for j, exp_name in enumerate(p_df["exp_method"].unique()):
-            y_min, y_max = g.axes[i, j].get_ylim()
-            if y_min < data_y_min:
-                data_y_min = y_min
-            if y_max > data_y_max:
-                data_y_max = y_max
-        for j, exp_name in enumerate(p_df["exp_method"].unique()):
-            g.axes[i, j].axhline(
-                mean_df.loc[
-                    (mean_df["data"] == dname) & (mean_df["exp_method"] == exp_name)
-                ]["full_fidelity"].values[0],
-                color="gray",
-                linestyle="--",
+        for i, varname in enumerate(spdf["variable"].unique()):
+            data_y_min, data_y_max = np.inf, -np.inf
+            if "coverage" in varname.lower():
+                variable_name = "Coverage"
+            elif "stability" in varname.lower():
+                variable_name = "Stability"
+            else:
+                variable_name = "Fidelity"
+            for j, exp_name in enumerate(spdf["exp_method"].unique()):
+                y_min, y_max = g.axes[i, j].get_ylim()
+                full_value = mean_df.loc[
+                    (mean_df["data"] == dataset) & (mean_df["exp_method"] == exp_name)
+                ][f"full_{variable_name.lower()}"].values[0]
+                g.axes[i, j].axhline(
+                    full_value,
+                    color="gray",
+                    linestyle="--",
+                )
+                if y_min < data_y_min:
+                    data_y_min = y_min
+                if y_max > data_y_max:
+                    data_y_max = y_max
+            for j, exp_name in enumerate(spdf["exp_method"].unique()):
+                # g.axes[i, j].set_ylim((data_y_min, data_y_max))
+                g.axes[i, j].set_title(f"{dataset} (XAI: {exp_name})")
+                # g.axes[i, j].set_ylim(bottom=0)
+                if variable_name in ["Fidelity", "Stability"]:
+                    g.axes[i, j].set_yscale("log")
+                i_f += 1
+            g.axes[i, 0].set_ylabel(variable_name)
+        handles = []
+        for line, label in zip(
+            g.axes.flat[0].get_lines(), spdf["Reduction method"].unique()
+        ):
+            handles.append(
+                plt.Line2D(
+                    [0],
+                    [0],
+                    color=line.get_color(),  # Use the modified color
+                    lw=line.get_linewidth(),  # Use the modified line width
+                    linestyle=line.get_linestyle(),
+                    label=label,  # Label from the data
+                )
             )
-            # g.axes[i, j].set_ylim((data_y_min, data_y_max))
-            g.axes[i, j].set_title(f"Dataset: {dname}, XAI: {exp_name}")
-            i_f += 1
-    # Reduce the size to fit into the paper
-    fig = g.figure
-    original_size = fig.get_size_inches()
-    fig.set_size_inches(original_size[0], original_size[1] * 5 / 8)
-    plt.savefig(MANUSCRIPT_DIR / "fidelity_k_full.pdf", dpi=600)
+        g.figure.legend(
+            handles=handles,
+            title="Reduction method",
+            bbox_to_anchor=(0.5, 0.0),
+            loc="upper center",
+            ncol=len(handles),
+        )
+        plt.savefig(MANUSCRIPT_DIR / f"k_sensitivity_full_{dataset}.pdf", dpi=600)
 
 
 def get_optimisation_method(k: int, explainer: lm.Explainer):
@@ -205,6 +355,358 @@ def get_optimisation_method(k: int, explainer: lm.Explainer):
         ),
         (f"glocalx_{k}", k): partial(px.find_proxies_glocalx, k=k),
     }
+
+
+def plot_global_comp(df: pd.DataFrame):
+    """Plot the main text plot with train and test fidelities + coverage"""
+    df.loc[:, "proxy_method_mod"] = "None"
+    df = df.loc[~df["proxy_method"].isna()]
+    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
+        "Min set"
+    )
+    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
+        "Max coverage"
+    )
+    df.loc[
+        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
+    ] = "Greedy Max coverage"
+    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
+    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = "Min loss"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
+    ] = "Greedy Min loss (fixed k)"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
+        "proxy_method_mod",
+    ] = "Const Min Loss"
+    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
+    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
+    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
+    df.loc[df["proxy_method"].str.contains("submodular"), "proxy_method_mod"] = (
+        "Submodular pick"
+    )
+    df.loc[df["proxy_method"].str.contains("glocalx"), "proxy_method_mod"] = "GLocalX"
+    df.loc[df["proxy_method"].str.contains("max_ball"), "proxy_method_mod"] = (
+        "Max spherical coverage"
+    )
+    exp_methods = ["LIME", "LORE", "SLISEMAP"]
+    datasets = ["Adult"]
+    datasets = df["data"].unique()
+    global_df = df.loc[
+        (df["data"].isin(datasets)) & (df["exp_method"] == "GlobalLinear")
+    ]
+    global_df = global_df.groupby("data").mean(numeric_only=True).reset_index()
+    for metric in ["fidelity", "stability", "coverage"]:
+        global_df.loc[:, f"proxy_{metric}"] = global_df[f"full_{metric}"]
+    gdfs = []
+    for exp_method in exp_methods:
+        for dataset in global_df["data"].unique():
+            edf = global_df.loc[global_df["data"] == dataset]
+            edf = edf.iloc[np.zeros(10)]
+            edf.loc[:, "exp_method"] = exp_method
+            edf.loc[:, "k"] = range(1, 11)
+            edf.loc[:, "proxy_method"] = "global"
+            edf.loc[:, "proxy_method_mod"] = "Global linear model"
+            gdfs.append(edf)
+    gdf = pd.concat(gdfs, ignore_index=True)
+    gdf.loc[:, "k"] = gdf["k"].astype(int)
+    reduction_methods = [
+        "Const Min Loss",
+        "Submodular pick",
+        "GLocalX",
+        "Global linear",
+        "Max spherical coverage",
+    ]
+    p_df = df.loc[df["exp_method"].isin(exp_methods)]
+    p_df = p_df.loc[p_df["data"].isin(datasets)]
+    p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
+    p_df = pd.concat((p_df, gdf), ignore_index=True)
+    p_df = p_df.sort_values(["data", "exp_method"])
+    p_df.loc[:, "proxy fidelity/stability"] = (
+        p_df["proxy_fidelity"] / p_df["proxy_stability"]
+    )
+    p_df = p_df.rename(
+        columns={
+            "proxy_method_mod": "Reduction method",
+            "proxy_fidelity": "Test fidelity",
+            "proxy_fidelity_train": "Train fidelity",
+            "proxy_coverage": "Test coverage",
+        }
+    )
+    mean_df = (
+        p_df.groupby(["data", "exp_method"])
+        .mean(numeric_only=True)[
+            ["full_fidelity_train", "full_fidelity", "full_coverage", "bb_loss_test"]
+        ]
+        .reset_index()
+    )
+    cmap = sns.color_palette("bright")
+    palette = {
+        key: value for key, value in zip(p_df["Reduction method"].unique(), cmap)
+    }
+    dash_list = sns._base.unique_dashes(p_df["Reduction method"].unique().size + 1)
+    style = {k: v for k, v in zip(p_df["Reduction method"].unique(), dash_list)}
+    spdf = p_df.loc[p_df["data"] == "Adult"]
+    spdf = spdf[
+        [
+            "job",
+            "exp_method",
+            "Reduction method",
+            "data",
+            "k",
+            "Train fidelity",
+            "Test fidelity",
+            "Test coverage",
+        ]
+    ].melt(["job", "exp_method", "data", "Reduction method", "k"])
+    g = sns.relplot(
+        spdf,
+        x="k",
+        y="value",
+        col="exp_method",
+        row="variable",
+        hue="Reduction method",
+        style="Reduction method",
+        kind="line",
+        facet_kws={"sharey": False},
+        **paper_theme(aspect=2, cols=5, rows=3, scaling=1.2),
+        legend=None,
+    )
+    i_f = 0
+    for i, variable in enumerate(spdf["variable"].unique()):
+        # set ylims based on dataset
+        data_y_min, data_y_max = np.inf, -np.inf
+        for j, exp_name in enumerate(p_df["exp_method"].unique()):
+            if j == 0:
+                g.axes[i, j].set_ylabel(variable)
+            y_min, y_max = g.axes[i, j].get_ylim()
+            if y_min < data_y_min:
+                data_y_min = y_min
+            if y_max > data_y_max:
+                data_y_max = y_max
+            if variable == "Test fidelity":
+                col_name = "full_fidelity"
+            elif variable == "Train fidelity":
+                col_name = "full_fidelity_train"
+            elif variable == "Test coverage":
+                col_name = "full_coverage"
+            else:
+                raise ValueError(f"wtf {variable}")
+            for j, exp_name in enumerate(spdf["exp_method"].unique()):
+                y_min, y_max = g.axes[i, j].get_ylim()
+                full_value = mean_df.loc[
+                    (mean_df["data"] == "Adult") & (mean_df["exp_method"] == exp_name)
+                ][col_name].values[0]
+                g.axes[i, j].axhline(
+                    full_value,
+                    color="gray",
+                    linestyle="--",
+                )
+                if i == 0:
+                    g.axes[i, j].set_title(f"Adult (XAI: {exp_name})")
+                else:
+                    g.axes[i, j].set_title("")
+                if "fidelity" in variable:
+                    g.axes[i, j].set(yscale="log")
+
+    plt.savefig(MANUSCRIPT_DIR / "global_comp_train_raw.pdf", dpi=600)
+    plt.show()
+
+
+def plot_global_comp_full(df: pd.DataFrame):
+    """Produce the small and large (appendix) plots for k-sensitivity."""
+    df.loc[:, "proxy_method_mod"] = "None"
+    df = df.loc[~df["proxy_method"].isna()]
+    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
+        "Min set"
+    )
+    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
+        "Max coverage"
+    )
+    df.loc[
+        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
+    ] = "Greedy Max coverage"
+    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
+    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = "Min loss"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
+    ] = "Greedy Min loss (fixed k)"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
+        "proxy_method_mod",
+    ] = "Greedy Min loss (minimum coverage)"
+    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
+    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
+    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
+    df.loc[df["proxy_method"].str.contains("submodular"), "proxy_method_mod"] = (
+        "Submodular pick"
+    )
+    df.loc[df["proxy_method"].str.contains("glocalx"), "proxy_method_mod"] = "GLocalX"
+    df.loc[df["proxy_method"].str.contains("max_ball"), "proxy_method_mod"] = (
+        "Max spherical coverage"
+    )
+    exp_methods = ["LIME", "LORE", "SHAP", "SmoothGrad", "SLISEMAP"]
+    datasets = df["data"].unique()
+    global_df = df.loc[
+        (df["data"].isin(datasets)) & (df["exp_method"] == "GlobalLinear")
+    ]
+    global_df = global_df.groupby("data").mean(numeric_only=True).reset_index()
+    for metric in ["fidelity", "stability", "coverage"]:
+        global_df.loc[:, f"proxy_{metric}"] = global_df[f"full_{metric}"]
+    gdfs = []
+    for exp_method in exp_methods:
+        for dataset in global_df["data"].unique():
+            edf = global_df.loc[global_df["data"] == dataset]
+            edf = edf.iloc[np.zeros(10)]
+            edf.loc[:, "exp_method"] = exp_method
+            edf.loc[:, "k"] = range(1, 11)
+            edf.loc[:, "proxy_method"] = "global"
+            edf.loc[:, "proxy_method_mod"] = "Global linear model"
+            gdfs.append(edf)
+    gdf = pd.concat(gdfs, ignore_index=True)
+    gdf.loc[:, "k"] = gdf["k"].astype(int)
+    p_df = df.loc[df["exp_method"].isin(exp_methods)]
+    p_df = pd.concat((p_df, gdf), ignore_index=True)
+    reduction_methods = [
+        "Greedy Min loss (minimum coverage)",
+        "Submodular pick",
+        "GLocalX",
+        "Max spherical coverage",
+        "Global linear model",
+    ]
+    p_df = p_df.loc[p_df["data"].isin(datasets)]
+    p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
+    p_df = p_df.sort_values(["data", "exp_method"])
+    p_df.loc[:, "proxy fidelity/stability"] = (
+        p_df["proxy_fidelity"] / p_df["proxy_stability"]
+    )
+    p_df = p_df.rename(
+        columns={
+            "proxy_method_mod": "Reduction method",
+            "proxy_fidelity_train": "Train fidelity",
+            "proxy_fidelity": "Test fidelity",
+            "proxy_coverage_train": "Test coverage",
+            "proxy_stability": "Stability",
+        }
+    )
+    mean_df = (
+        p_df.groupby(["data", "exp_method"])
+        .mean(numeric_only=True)[
+            [
+                "full_fidelity_train",
+                "full_fidelity",
+                "full_stability",
+                "full_coverage",
+                "bb_loss_test",
+            ]
+        ]
+        .reset_index()
+    )
+    cmap = sns.color_palette("bright")
+    palette = {
+        key: value for key, value in zip(p_df["Reduction method"].unique(), cmap)
+    }
+    dash_list = sns._base.unique_dashes(p_df["Reduction method"].unique().size + 1)
+    style = {k: v for k, v in zip(p_df["Reduction method"].unique(), dash_list)}
+    classification_datasets = ["Telescope", "Adult", "Higgs", "Jets", "Spam", "Churn"]
+    for dataset in datasets:
+        if dataset in classification_datasets:
+            mask = p_df["data"] == dataset
+        else:
+            mask = (p_df["data"] == dataset) & (p_df["exp_method"] != "LORE")
+        spdf = p_df.loc[mask]
+        spdf = spdf[
+            [
+                "job",
+                "exp_method",
+                "data",
+                "Reduction method",
+                "Test fidelity",
+                "Train fidelity",
+                "Test coverage",
+                "Stability",
+                "k",
+            ]
+        ].melt(["job", "exp_method", "data", "Reduction method", "k"])
+        g = sns.relplot(
+            spdf,
+            x="k",
+            y="value",
+            col="exp_method",
+            row="variable",
+            hue="Reduction method",
+            style="Reduction method",
+            kind="line",
+            facet_kws={"sharey": False},
+            **paper_theme(
+                aspect=1.2,
+                cols=len(exp_methods),
+                rows=len(spdf["variable"].unique()),
+                scaling=0.6,
+            ),
+            palette=palette,
+            dashes=style,
+            legend=None,
+        )
+        i_f = 0
+        for i, variable in enumerate(spdf["variable"].unique()):
+            data_y_min, data_y_max = np.inf, -np.inf
+            if variable == "Test fidelity":
+                col_name = "full_fidelity"
+            elif variable == "Train fidelity":
+                col_name = "full_fidelity_train"
+            elif variable == "Test coverage":
+                col_name = "full_coverage"
+            elif variable == "Stability":
+                col_name = "full_stability"
+            else:
+                raise ValueError(f"wtf {variable}")
+            for j, exp_name in enumerate(spdf["exp_method"].unique()):
+                y_min, y_max = g.axes[i, j].get_ylim()
+                if y_min < data_y_min:
+                    data_y_min = y_min
+                if y_max > data_y_max:
+                    data_y_max = y_max
+            for j, exp_name in enumerate(p_df.loc[mask]["exp_method"].unique()):
+                full_value = mean_df.loc[
+                    (mean_df["data"] == dataset) & (mean_df["exp_method"] == exp_name)
+                ][col_name].values[0]
+                g.axes[i, j].axhline(
+                    full_value,
+                    color="gray",
+                    linestyle="--",
+                )
+                if i == 0:
+                    g.axes[i, j].set_title(f"{dataset} (XAI: {exp_name})")
+                else:
+                    g.axes[i, j].set_title("")
+                if variable in ["Test fidelity", "Train fidelity", "Stability"]:
+                    g.axes[i, j].set_yscale("log")
+                i_f += 1
+            g.axes[i, 0].set_ylabel(variable)
+        handles = []
+        for line, label in zip(
+            g.axes.flat[0].get_lines(), spdf["Reduction method"].unique()
+        ):
+            handles.append(
+                plt.Line2D(
+                    [0],
+                    [0],
+                    color=line.get_color(),  # Use the modified color
+                    lw=line.get_linewidth(),  # Use the modified line width
+                    linestyle=line.get_linestyle(),
+                    label=label,  # Label from the data
+                )
+            )
+        g.figure.legend(
+            handles=handles,
+            title="Reduction method",
+            bbox_to_anchor=(0.5, 0.0),
+            loc="upper center",
+            ncol=len(handles),
+        )
+        plt.tight_layout()
+        plt.show()
 
 
 def eval_proxy_method_k_sensitivity(
@@ -453,8 +955,10 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         files = glob(str(OUTPUT_DIR / "*.parquet"))
         df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-        plot_results(df)
-        plot_results_full(df)
+        plot_k_fidelity_coverage(df)
+        plot_k_sensitivity_full(df)
+        plot_global_comp(df)
+        plot_global_comp_full(df)
     else:
         ks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         time = timer()

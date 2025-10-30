@@ -340,6 +340,7 @@ def paper_theme(
     rows: int = 1,
     page_width: float = 347.0,
     figsize: bool = False,  # return figsize instead of dict
+    scaling: float = 1.0,
 ) -> Union[Dict[str, float], Tuple[float, float]]:
     """Set theme and sizes for plots added to papers.
 
@@ -354,6 +355,7 @@ def paper_theme(
         rows: Number of rows in plot. Defaults to 1.
         page_width: Page width in points. Defaults to 347.0.
         figsize: Return figsize instead of dict (for use with bare pyplot figures). Defaults to False.
+        scaling: Font etc scaling value
 
     Returns:
         The size.
@@ -363,7 +365,7 @@ def paper_theme(
     scale = page_width / 72.27  # from points to inches
     size = (width * scale, width / cols * rows / aspect * scale)
     sns.set_theme(
-        context={k: v * 0.6 for k, v in sns.plotting_context("paper").items()},
+        context={k: v * scaling for k, v in sns.plotting_context("paper").items()},
         style=sns.axes_style("ticks"),
         palette="bright",
         # font="cmr10",
