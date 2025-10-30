@@ -1,22 +1,26 @@
-import torch
-
 from project_paths import RESULTS_DIR, MANUSCRIPT_DIR
 from glob import glob
 import sys
 import pandas as pd
-import torch
 import numpy as np
-from sklearn.model_selection import train_test_split
-from functools import partial, reduce
-import operator
 from timeit import default_timer as timer
+import pyarrow.parquet as pq
+import seaborn as sns
+import matplotlib.pyplot as plt
+from utils.utils import (
+    rename_columns,
+    paper_theme,
+    prepare_data,
+    read_parquet,
+    get_explainer,
+)
+from utils.hyperparameters import get_data, get_bb
+from functools import reduce, partial
+import torch
 import explainreduce.localmodels as lm
 import explainreduce.proxies as px
-from utils.utils import read_parquet, paper_theme
+import operator
 from explainreduce import metrics
-from utils.hyperparameters import get_params, get_bb, get_data
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 # import warnings
 # warnings.simplefilter("error")
@@ -32,19 +36,19 @@ def preprocess_results(odf: pd.DataFrame) -> pd.DataFrame:
         "Min set"
     )
     df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
-        "Max coverage"
+        "Exact Max coverage"
     )
     df.loc[
         df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
-    ] = "Greedy Max coverage"
+    ] = "Max coverage"
     df.loc[
         df["proxy_method"].str.contains("greedy_min_loss_k_[0-9]+"),
         "proxy_method_mod",
-    ] = "Greedy Min loss (fixed k)"
+    ] = "Min loss"
     df.loc[
         df["proxy_method"].str.contains("greedy_min_loss_k_[0-9]+_min_cov"),
         "proxy_method_mod",
-    ] = "Greedy Min loss (minimum coverage)"
+    ] = "Const Min loss"
     df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
     return df
 
@@ -83,8 +87,7 @@ def plot_result_small(df: pd.DataFrame):
     # gas turbine - c
     sns.scatterplot(
         gs.loc[
-            (gs["init_coverage"] != 0.61)
-            & (gs["Reduction method"] == "Greedy Min loss (minimum coverage)")
+            (gs["init_coverage"] != 0.61) & (gs["Reduction method"] == "Const Min loss")
         ],
         x="init_coverage",
         y="proxy_fidelity",
@@ -117,10 +120,7 @@ def plot_result_small(df: pd.DataFrame):
     ax[2].set_xlabel("Error tolerance")
     # jets - c
     sns.scatterplot(
-        j.loc[
-            (j["init_p"] != 0.41)
-            & (j["Reduction method"] == "Greedy Min loss (minimum coverage)")
-        ],
+        j.loc[(j["init_p"] != 0.41) & (j["Reduction method"] == "Const Min loss")],
         x="init_p",
         y="proxy_fidelity",
         color="tab:orange",
@@ -180,7 +180,7 @@ def plot_result_full(df: pd.DataFrame):
         sns.lineplot(
             gdf.loc[
                 (gdf["init_coverage"] != 0.61)
-                & (gdf["Reduction method"] == "Greedy Min loss (minimum coverage)")
+                & (gdf["Reduction method"] == "Const Min loss")
             ],
             x="init_coverage",
             y="proxy_fidelity",
