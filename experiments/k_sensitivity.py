@@ -267,7 +267,9 @@ def plot_k_sensitivity_full(df: pd.DataFrame):
             style="Reduction method",
             kind="line",
             facet_kws={"sharey": False},
-            **paper_theme(aspect=1.2, cols=len(exp_methods), rows=len(datasets)),
+            **paper_theme(
+                aspect=1.2, cols=len(exp_methods), rows=len(datasets), scaling=0.6
+            ),
             palette=palette,
             dashes=style,
             legend=None,
@@ -304,7 +306,10 @@ def plot_k_sensitivity_full(df: pd.DataFrame):
                 if variable_name in ["Fidelity", "Stability"]:
                     g.axes[i, j].set_yscale("log")
                 i_f += 1
-            g.axes[i, 0].set_ylabel(variable_name)
+            if variable_name == "Stability":
+                g.axes[i, 0].set_ylabel("Instability")
+            else:
+                g.axes[i, 0].set_ylabel(variable_name)
         handles = []
         for line, label in zip(
             g.axes.flat[0].get_lines(), spdf["Reduction method"].unique()
@@ -510,7 +515,6 @@ def plot_global_comp(df: pd.DataFrame):
                     g.axes[i, j].set(yscale="log")
 
     plt.savefig(MANUSCRIPT_DIR / "global_comp_train_raw.pdf", dpi=600)
-    plt.show()
 
 
 def plot_global_comp_full(df: pd.DataFrame):
@@ -586,7 +590,7 @@ def plot_global_comp_full(df: pd.DataFrame):
             "proxy_fidelity_train": "Train fidelity",
             "proxy_fidelity": "Test fidelity",
             "proxy_coverage": "Coverage",
-            "proxy_stability": "Stability",
+            "proxy_stability": "Instability",
         }
     )
     mean_df = (
@@ -624,7 +628,7 @@ def plot_global_comp_full(df: pd.DataFrame):
                 "Test fidelity",
                 "Train fidelity",
                 "Coverage",
-                "Stability",
+                "Instability",
                 "k",
             ]
         ].melt(["job", "exp_method", "data", "Reduction method", "k"])
@@ -657,7 +661,7 @@ def plot_global_comp_full(df: pd.DataFrame):
                 col_name = "full_fidelity_train"
             elif variable == "Coverage":
                 col_name = "full_coverage"
-            elif variable == "Stability":
+            elif variable == "Instability":
                 col_name = "full_stability"
             else:
                 raise ValueError(f"wtf {variable}")
@@ -706,7 +710,7 @@ def plot_global_comp_full(df: pd.DataFrame):
             ncol=len(handles),
         )
         plt.tight_layout()
-        plt.show()
+        plt.savefig(MANUSCRIPT_DIR / f"global_comp_full_{dataset}.pdf", dpi=600)
 
 
 def eval_proxy_method_k_sensitivity(
