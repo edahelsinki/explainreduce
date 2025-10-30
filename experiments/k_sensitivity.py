@@ -430,7 +430,7 @@ def plot_global_comp(df: pd.DataFrame):
             "proxy_method_mod": "Reduction method",
             "proxy_fidelity": "Test fidelity",
             "proxy_fidelity_train": "Train fidelity",
-            "proxy_coverage": "Test coverage",
+            "proxy_coverage": "Coverage",
         }
     )
     mean_df = (
@@ -456,7 +456,7 @@ def plot_global_comp(df: pd.DataFrame):
             "k",
             "Train fidelity",
             "Test fidelity",
-            "Test coverage",
+            "Coverage",
         ]
     ].melt(["job", "exp_method", "data", "Reduction method", "k"])
     g = sns.relplot(
@@ -488,7 +488,7 @@ def plot_global_comp(df: pd.DataFrame):
                 col_name = "full_fidelity"
             elif variable == "Train fidelity":
                 col_name = "full_fidelity_train"
-            elif variable == "Test coverage":
+            elif variable == "Coverage":
                 col_name = "full_coverage"
             else:
                 raise ValueError(f"wtf {variable}")
@@ -585,7 +585,7 @@ def plot_global_comp_full(df: pd.DataFrame):
             "proxy_method_mod": "Reduction method",
             "proxy_fidelity_train": "Train fidelity",
             "proxy_fidelity": "Test fidelity",
-            "proxy_coverage_train": "Test coverage",
+            "proxy_coverage": "Coverage",
             "proxy_stability": "Stability",
         }
     )
@@ -623,7 +623,7 @@ def plot_global_comp_full(df: pd.DataFrame):
                 "Reduction method",
                 "Test fidelity",
                 "Train fidelity",
-                "Test coverage",
+                "Coverage",
                 "Stability",
                 "k",
             ]
@@ -655,7 +655,7 @@ def plot_global_comp_full(df: pd.DataFrame):
                 col_name = "full_fidelity"
             elif variable == "Train fidelity":
                 col_name = "full_fidelity_train"
-            elif variable == "Test coverage":
+            elif variable == "Coverage":
                 col_name = "full_coverage"
             elif variable == "Stability":
                 col_name = "full_stability"
@@ -771,16 +771,11 @@ def eval_proxy_method_k_sensitivity(
         full_fidelity_train=full_fidelity_train.mean().item(),
         full_stability=L[torch.arange(L.shape[0])[:, None], nn].mean().item(),
         full_coverage=metrics.calculate_coverage(L < global_epsilon),
-        full_coverage_train=(full_fidelity_train < global_epsilon)
-        .to(explainer.dtype)
-        .mean()
-        .item(),
         full_loss_test=full_loss,
         bb_loss_test=bb_loss,
         loss_train=loss_train.mean().item(),
         loss_test=loss_test.mean().item(),
         proxy_fidelity=proxy_fidelity,
-        proxy_fidelity_train=proxy_fidelity_train.mean().item(),
         proxy_coverage=metrics.calculate_coverage(reduced_L < global_epsilon),
         proxy_coverage_train=(proxy_fidelity_train < global_epsilon)
         .to(proxies.dtype)
