@@ -27,7 +27,7 @@ from slisemap.utils import softmax_column_kernel, softmax_row_kernel, squared_di
 OUTPUT_DIR = RESULTS_DIR / "hyperparam_optim"
 
 import explainreduce.localmodels as lm
-import data
+import utils.data as data
 from slisemap import Slisemap
 from slisemap.local_models import LinearRegression, LogisticRegression
 from slisemap.slipmap import Slipmap
@@ -35,6 +35,8 @@ from slisemap.tuning import hyperparameter_tune
 from skopt import gp_minimize
 from skopt.utils import use_named_args
 from skopt.space import Real
+from typing import Optional, Dict
+import warnings
 
 
 def get_bb(bb, cls, X, y, dname=None):
@@ -86,13 +88,19 @@ def get_bb(bb, cls, X, y, dname=None):
             pred_fn = m.predict
     elif bb == "Neural Network":
         if cls:
-            m = MLPClassifier((64, 32, 16), random_state=42, early_stopping=True)
+            m = MLPClassifier(
+                hidden_layer_sizes=(64, 32, 16), random_state=42, early_stopping=True
+            )
             m.fit(X, y)
             pred_fn = m.predict_proba
         else:
             if y.ndim == 2:
                 y = y.ravel()
-            m = MLPRegressor((128, 64, 32, 16), random_state=42, early_stopping=True)
+            m = MLPRegressor(
+                hidden_layer_sizes=(128, 64, 32, 16),
+                random_state=42,
+                early_stopping=True,
+            )
             m.fit(X, y)
             pred_fn = m.predict
     else:
@@ -104,6 +112,12 @@ def get_data(differentiable=False):
     """Get data dictionary in the form of dset name:  (X, y, bb_name, classification)"""
     return {
         # use lambdas for lazy loading
+        "Life Expectancy": lambda: (
+            *data.get_life(blackbox=None),
+            "Neural Network",
+            False,
+        ),
+        "Vehicles": lambda: (*data.get_vehicle(blackbox=None), "SVM", False),
         "Synthetic": lambda: (
             *data.get_rsynth(N=5000, k=5, s=2.0)[1:3],
             "Random Forest",
@@ -112,14 +126,12 @@ def get_data(differentiable=False):
         "Air Quality": lambda: (*data.get_airquality(), "Random Forest", False),
         "Gas Turbine": lambda: (*data.get_gas_turbine(), "AdaBoost", False),
         "QM9": lambda: (*data.get_qm9(), "Neural Network", False),
+        "Adult": lambda: (*data.get_adult(), "Neural Network", True),
         "Higgs": lambda: (*data.get_higgs(), "Gradient Boosting", True),
         "Jets": lambda: (*data.get_jets(), "Random Forest", True),
-        "Life Expectancy": lambda: (
-            *data.get_life(blackbox=None),
-            "Neural Network",
-            False,
-        ),
-        "Vehicles": lambda: (*data.get_vehicle(blackbox=None), "SVM", False),
+        "Spam": lambda: (*data.get_spam(), "Gradient Boosting", True),
+        "Churn": lambda: (*data.get_churn(), "Random Forest", True),
+        "Telescope": lambda: (*data.get_telescope(), "Neural Network", True),
     }
 
 
@@ -132,7 +144,49 @@ def get_hyperopts():
         "LIME": hyperopt_lime,
         # "SHAP": hyperopt_shap,
         "SmoothGrad": hyperopt_smoothgrad,
+        "GlobalLinear": hyperopt_linear,
     }
+
+
+def hyperopt_linear(
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    classifier,
+    model=None,
+    n_calls=15,
+    random_state=42,
+    verbose=False,
+):
+    space = [
+        Real(0.001, 10.0, prior="log-uniform", name="lasso"),
+        Real(0.0001, 1.0, prior="log-uniform", name="ridge"),
+    ]
+
+    @use_named_args(space)
+    def objective(**params):
+        exp = lm.GlobalLinearExplainer(
+            X_train, y_train, classifier, dtype=torch.float64, **params
+        )
+        exp.fit()
+        yhat = exp.predict(torch.as_tensor(X_test, dtype=exp.dtype))
+        return exp.loss_fn(yhat, y_test).mean().item()
+
+    res = gp_minimize(
+        objective,
+        space,
+        n_calls=n_calls,
+        n_initial_points=min(10, max(3, (n_calls - 1) // 3 + 1)),
+        random_state=42,
+    )
+    params = {}
+    for s, v in zip(space, res.x):
+        params[s.name] = v
+    if verbose:
+        print("Final parameter values:", params)
+
+    return params
 
 
 def hyperopt_smoothgrad(
@@ -244,7 +298,12 @@ def hyperopt_lime(
     @use_named_args(space)
     def objective(**params):
         exp = lm.LIMEExplainer(
-            X_train, y_train, classifier, black_box_model=model, **params
+            X_train,
+            y_train,
+            classifier,
+            black_box_model=model,
+            num_samples=500,
+            **params,
         )
         exp.fit()
         yhat = exp.predict(X_test)
@@ -385,19 +444,79 @@ def _eval_hyperparams(
     return results
 
 
-def get_params(method, data, black_box):
+def get_params(
+    method, data, black_box, error_on_missing=False
+) -> Optional[Dict[str, np.float64]]:
     if black_box is None:
         black_box = ""
-    try:
-        return PARAM_CACHE[(method, data, black_box)]
-    except:
-        raise NotImplementedError(
-            f"No cached parameters for {method} & {data} & {black_box}"
-        )
+    out = PARAM_CACHE.get((method, data, black_box))
+    if out is None:
+        if error_on_missing:
+            raise NotImplementedError(
+                f"No cached parameters for {method} & {data} & {black_box}"
+            )
+        else:
+            warnings.warn(f"No cached parameters for {method} & {data} & {black_box}")
+    return out
 
 
 PARAM_CACHE = {
+    ("GlobalLinear", "Adult", "Neural Network"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Air Quality", "Random Forest"): {
+        "lasso": np.float64(0.00212),
+        "ridge": np.float64(0.01346),
+    },
+    ("GlobalLinear", "Churn", "Random Forest"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Gas Turbine", "AdaBoost"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00089),
+    },
+    ("GlobalLinear", "Higgs", "Gradient Boosting"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00015),
+    },
+    ("GlobalLinear", "Jets", "Random Forest"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Life Expectancy", "Neural Network"): {
+        "lasso": np.float64(0.00303),
+        "ridge": np.float64(0.00228),
+    },
+    ("GlobalLinear", "QM9", "Neural Network"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Spam", "Gradient Boosting"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Synthetic", "Neural Network"): {
+        "lasso": np.float64(0.00197),
+        "ridge": np.float64(0.00046),
+    },
+    ("GlobalLinear", "Synthetic", "Random Forest"): {
+        "lasso": np.float64(0.00283),
+        "ridge": np.float64(0.0063),
+    },
+    ("GlobalLinear", "Telescope", "Neural Network"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+    },
+    ("GlobalLinear", "Vehicles", "SVM"): {
+        "lasso": np.float64(0.00159),
+        "ridge": np.float64(0.00486),
+    },
+    ("LIME", "Adult", "Neural Network"): {"kernel_width": np.float64(0.32413)},
     ("LIME", "Air Quality", "Random Forest"): {"kernel_width": np.float64(0.35037)},
+    ("LIME", "Air Quality", "SVM"): {"kernel_width": np.float64(0.35324)},
+    ("LIME", "Churn", "Random Forest"): {"kernel_width": np.float64(0.77247)},
     ("LIME", "Gas Turbine", "AdaBoost"): {"kernel_width": np.float64(0.41508)},
     ("LIME", "Higgs", "Gradient Boosting"): {"kernel_width": np.float64(1.86389)},
     ("LIME", "Jets", "Random Forest"): {"kernel_width": np.float64(0.22913)},
@@ -405,12 +524,31 @@ PARAM_CACHE = {
         "kernel_width": np.float64(0.56309)
     },
     ("LIME", "QM9", "Neural Network"): {"kernel_width": np.float64(0.77626)},
+    ("LIME", "Spam", "Gradient Boosting"): {"kernel_width": np.float64(0.65383)},
+    ("LIME", "Synthetic", "Neural Network"): {"kernel_width": np.float64(0.42561)},
     ("LIME", "Synthetic", "Random Forest"): {"kernel_width": np.float64(2.94358)},
+    ("LIME", "Telescope", "Neural Network"): {"kernel_width": np.float64(0.51333)},
+    ("LIME", "Telescope", "SVM"): {"kernel_width": np.float64(0.48354)},
     ("LIME", "Vehicles", "SVM"): {"kernel_width": np.float64(0.3894)},
+    ("SLIPMAP", "Adult", "Neural Network"): {
+        "lasso": np.float64(0.00237),
+        "ridge": np.float64(0.00011),
+        "radius": np.float64(1.53422),
+    },
     ("SLIPMAP", "Air Quality", "Random Forest"): {
         "lasso": np.float64(0.0512),
         "ridge": np.float64(0.00469),
         "radius": np.float64(1.64729),
+    },
+    ("SLIPMAP", "Air Quality", "SVM"): {
+        "lasso": np.float64(0.0247),
+        "ridge": np.float64(0.27907),
+        "radius": np.float64(1.97165),
+    },
+    ("SLIPMAP", "Churn", "Random Forest"): {
+        "lasso": np.float64(0.64276),
+        "ridge": np.float64(0.3463),
+        "radius": np.float64(2.33486),
     },
     ("SLIPMAP", "Gas Turbine", "AdaBoost"): {
         "lasso": np.float64(0.20543),
@@ -437,19 +575,54 @@ PARAM_CACHE = {
         "ridge": np.float64(0.00044),
         "radius": np.float64(1.5),
     },
+    ("SLIPMAP", "Spam", "Gradient Boosting"): {
+        "lasso": np.float64(0.00264),
+        "ridge": np.float64(0.00012),
+        "radius": np.float64(1.66328),
+    },
+    ("SLIPMAP", "Synthetic", "Neural Network"): {
+        "lasso": np.float64(0.01262),
+        "ridge": np.float64(0.00017),
+        "radius": np.float64(3.72406),
+    },
     ("SLIPMAP", "Synthetic", "Random Forest"): {
         "lasso": np.float64(0.26804),
         "ridge": np.float64(0.00163),
         "radius": np.float64(2.37795),
+    },
+    ("SLIPMAP", "Telescope", "Neural Network"): {
+        "lasso": np.float64(0.00128),
+        "ridge": np.float64(0.00013),
+        "radius": np.float64(1.51015),
+    },
+    ("SLIPMAP", "Telescope", "SVM"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00014),
+        "radius": np.float64(1.73289),
     },
     ("SLIPMAP", "Vehicles", "SVM"): {
         "lasso": np.float64(0.01155),
         "ridge": np.float64(0.01002),
         "radius": np.float64(1.75377),
     },
+    ("SLISEMAP", "Adult", "Neural Network"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+        "radius": np.float64(3.5),
+    },
     ("SLISEMAP", "Air Quality", "Random Forest"): {
         "lasso": np.float64(0.00147),
         "ridge": np.float64(0.0001),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Air Quality", "SVM"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.0001),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Churn", "Random Forest"): {
+        "lasso": np.float64(0.0041),
+        "ridge": np.float64(0.00012),
         "radius": np.float64(3.5),
     },
     ("SLISEMAP", "Gas Turbine", "AdaBoost"): {
@@ -477,9 +650,29 @@ PARAM_CACHE = {
         "ridge": np.float64(0.0001),
         "radius": np.float64(3.5),
     },
+    ("SLISEMAP", "Spam", "Gradient Boosting"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00107),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Synthetic", "Neural Network"): {
+        "lasso": np.float64(0.01272),
+        "ridge": np.float64(0.00033),
+        "radius": np.float64(3.5),
+    },
     ("SLISEMAP", "Synthetic", "Random Forest"): {
         "lasso": np.float64(0.272),
         "ridge": np.float64(0.00424),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Telescope", "Neural Network"): {
+        "lasso": np.float64(0.00101),
+        "ridge": np.float64(0.00025),
+        "radius": np.float64(3.5),
+    },
+    ("SLISEMAP", "Telescope", "SVM"): {
+        "lasso": np.float64(0.001),
+        "ridge": np.float64(0.00011),
         "radius": np.float64(3.5),
     },
     ("SLISEMAP", "Vehicles", "SVM"): {
@@ -487,9 +680,17 @@ PARAM_CACHE = {
         "ridge": np.float64(0.0001),
         "radius": np.float64(3.5),
     },
+    ("SmoothGrad", "Adult", "Neural Network"): {
+        "perturbation": np.float64(0.00081),
+        "noise_level": np.float64(0.99997),
+    },
     ("SmoothGrad", "Air Quality", "Random Forest"): {
         "perturbation": np.float64(0.00078),
         "noise_level": np.float64(0.1916),
+    },
+    ("SmoothGrad", "Churn", "Random Forest"): {
+        "perturbation": np.float64(0.00098),
+        "noise_level": np.float64(0.58307),
     },
     ("SmoothGrad", "Gas Turbine", "AdaBoost"): {
         "perturbation": np.float64(0.0008),
@@ -511,16 +712,27 @@ PARAM_CACHE = {
         "perturbation": np.float64(0.00068),
         "noise_level": np.float64(0.24786),
     },
+    ("SmoothGrad", "Spam", "Gradient Boosting"): {
+        "perturbation": np.float64(1e-05),
+        "noise_level": np.float64(0.95722),
+    },
+    ("SmoothGrad", "Synthetic", "Neural Network"): {
+        "perturbation": np.float64(0.00067),
+        "noise_level": np.float64(0.22836),
+    },
     ("SmoothGrad", "Synthetic", "Random Forest"): {
         "perturbation": np.float64(0.00073),
         "noise_level": np.float64(0.46207),
+    },
+    ("SmoothGrad", "Telescope", "Neural Network"): {
+        "perturbation": np.float64(0.00061),
+        "noise_level": np.float64(1.0),
     },
     ("SmoothGrad", "Vehicles", "SVM"): {
         "perturbation": np.float64(0.00053),
         "noise_level": np.float64(0.34992),
     },
 }
-
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:

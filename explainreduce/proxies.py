@@ -1,5 +1,5 @@
 """
-    This module contains the methods which generate proxy sets from local explanations.
+This module contains the methods which generate proxy sets from local explanations.
 """
 
 import sys
@@ -8,6 +8,14 @@ import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
+from pathlib import Path
+from configparser import ConfigParser
+
+curr_path = Path(__file__)
+config = ConfigParser()
+config.read(str(curr_path.parent.parent / "config.ini"))
+GLOCALX_PATH = config["Paths"]["GLOCALX_PATH"]
+sys.path.append(GLOCALX_PATH)
 
 import pandas as pd
 import pulp
@@ -21,7 +29,12 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 import pulp
 from pulp import PULP_CBC_CMD
 from warnings import warn
-from localmodels import Explainer, logistic_regression_loss
+from localmodels import (
+    Explainer,
+    logistic_regression_loss,
+    LORERuleExplainer,
+    LIMEExplainer,
+)
 from sklearn.cluster import KMeans
 import explainreduce.metrics as metrics
 import warnings
@@ -183,7 +196,9 @@ def find_proxies_coverage(
     reduced_models = [explainer.local_models[i] for i in selected_proxies]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[selected_proxies, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, selected_proxies
+    )
 
     return reduced
 
@@ -196,7 +211,9 @@ def find_proxies_random(explainer: Explainer, k: int, epsilon=None) -> Explainer
     reduced_models = [explainer.local_models[i] for i in proxies]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[proxies, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, proxies
+    )
     return reduced
 
 
@@ -392,7 +409,9 @@ def find_proxies_clustering(
     reduced_models = [explainer.local_models[i] for i in pids]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[pids, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, pids
+    )
 
     return reduced
 
@@ -458,7 +477,9 @@ def find_proxies_clustering_wrapper(
     reduced_models = [explainer.local_models[i] for i in pids]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[pids, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, pids
+    )
 
     return reduced
 
@@ -536,7 +557,9 @@ def find_proxies_greedy(explainer: Explainer, k: int, p=0.33, epsilon=None):
     reduced_models = [explainer.local_models[i] for i in proxies]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[proxies, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, proxies
+    )
 
     return reduced
 
@@ -587,7 +610,9 @@ def find_proxies_greedy_min_loss(
     reduced_models = [explainer.local_models[i] for i in proxies]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[proxies, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, proxies
+    )
 
     return reduced
 
@@ -661,7 +686,9 @@ def find_proxies_greedy_min_loss_k_min_cov(
     reduced_models = [explainer.local_models[i] for i in proxies]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[proxies, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, proxies
+    )
 
     return reduced
 
@@ -687,7 +714,9 @@ def find_proxies_greedy_k_min_loss(explainer: Explainer, k: int, epsilon=None):
     reduced_models = [explainer.local_models[i] for i in proxies]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[proxies, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, proxies
+    )
 
     return reduced
 
@@ -745,7 +774,9 @@ def find_proxies_min_loss(
     reduced_models = [explainer.local_models[i] for i in selected_rows]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[selected_rows, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, selected_rows
+    )
     return reduced
 
 
@@ -828,7 +859,9 @@ def find_proxies_minimal_set(
     reduced_models = [explainer.local_models[i] for i in selected]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[selected, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, selected
+    )
 
     return reduced
 
@@ -941,6 +974,242 @@ def find_proxies_loss_recursive(explainer: Explainer, k: int, epsilon=None):
     reduced_models = [explainer.local_models[i] for i in final_choices]
     mapping = generate_minimal_loss_mapping(explainer, reduced_models)
     vector_representation = explainer.vector_representation[final_choices, :]
-    reduced = explainer.clone_reduced(reduced_models, mapping, vector_representation)
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, final_choices
+    )
 
     return reduced
+
+
+def find_proxies_greedy_k_min_loss_descent(explainer: Explainer, k: int, epsilon=None):
+    """Greedily search for a set of k proxies which attain minimum total loss with a
+    worst-out approach."""
+
+    L = explainer.get_L()
+    n_proxies, _ = L.shape
+    proxies = [True] * n_proxies
+    for _ in range(n_proxies - k):
+        min_loss = torch.inf
+        worst = None
+        for i, proxy_on in enumerate(proxies):
+            if not proxy_on:
+                continue
+            proxies[i] = False
+            current_loss = torch.min(L[proxies, :], dim=0)[0].sum().item()
+            if current_loss < min_loss:
+                min_loss = current_loss
+                worst = i
+            proxies[i] = True
+        if worst is None:
+            print("Cannot improve!")
+            break
+        proxies[worst] = False
+
+    prx = [i for i, p in enumerate(proxies) if p]
+    reduced_models = [explainer.local_models[i] for i in prx]
+    mapping = generate_minimal_loss_mapping(explainer, reduced_models)
+    vector_representation = explainer.vector_representation[prx, :]
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, prx
+    )
+
+    return reduced
+
+
+def find_proxies_submodular_pick(
+    explainer: LIMEExplainer,
+    k: int,
+    sample_size: int = 20,
+    num_features: int = 14,
+    epsilon=None,
+):
+    assert "LIMEExplainer" in str(
+        explainer.__class__
+    ), f"Submodular pick reduction is only available with LIMEExplainer, got {type(explainer)}!"
+    from lime import submodular_pick
+
+    sp_obj = submodular_pick.SubmodularPick(
+        explainer._LIME_explainer,
+        tonp(explainer.X),
+        explainer.black_box_predict(),
+        sample_size=sample_size,
+        num_features=num_features,
+        num_exps_desired=k,
+    )
+    discretize = explainer.explainer_kwargs.get("discretize", False)
+
+    def explain(i):
+
+        def _sp_predict(X):
+            X = tonp(X)
+            if discretize:
+                X = sp_obj.discretizer.discretize(X) == x1
+            Y = np.sum(X * b, -1, keepdims=True) + inter
+
+            if explainer.classifier:
+                Y = np.clip(Y, 0.0, 1.0)
+                if exp_label == 0:
+                    Y = np.concatenate((Y, 1.0 - Y), -1)
+                else:
+                    Y = np.concatenate((1.0 - Y, Y), -1)
+
+            return torch.as_tensor(Y, dtype=explainer.dtype)
+
+        exp = sp_obj.sp_explanations[i]
+        b = np.zeros((1, explainer.X.shape[1]))
+        # for classification, SP objects only contain one label; hence, may need to flip the
+        # probabilities in the predict function
+        # NOTE: this does affect the vector representation; however, the representation
+        # should still function as a unique identifier for the model
+        if explainer.classifier:
+            exp_label = exp.available_labels()[0]
+        else:
+            exp_label = 1
+        for j, v in exp.as_map()[exp_label]:
+            b[0, j] = v
+        inter = exp.intercept[exp_label]
+        if discretize:
+            x1 = sp_obj.discretizer.discretize(explainer.X[i : i + 1, :])
+
+        return b, _sp_predict
+
+    sp_models = [explain(i) for i in range(len(sp_obj.sp_explanations))]
+    B = torch.vstack(
+        [torch.as_tensor(lm[0], dtype=explainer.dtype) for lm in sp_models]
+    )
+    proxies = [lm[1] for lm in sp_models]
+    mapping = generate_minimal_loss_mapping(explainer, proxies)
+    # need to find the corresponding rows in the B matrix to get the indices!
+    vector_representation = B
+    reduced = explainer.clone_reduced(
+        proxies, mapping, vector_representation, sp_models
+    )
+    return reduced
+
+
+def find_proxies_max_cov_ball_cover(
+    explainer: Explainer,
+    k: int,
+    radius: float,
+    phi: float = 0.8,
+    time_limit=None,
+    epsilon=None,
+):
+    assert (
+        explainer.classifier
+    ), "Ball covering aggregation only possible for classifier explainers!"
+
+    n_exp = len(explainer.local_models)
+    n_items = explainer.X.shape[0]
+    y_tr = torch.max(explainer.y, dim=1)[1]
+    match_matrix = torch.zeros((n_exp, n_items))
+    for ei in range(n_exp):
+        yhat = torch.max(explainer.local_models[ei](explainer.X), dim=1)[1]
+        match_matrix[ei] = yhat == y_tr
+
+    dist_matrix = torch.cdist(explainer.X, explainer.X)
+
+    problem = pulp.LpProblem("LiEtAlAggregateExplainer", pulp.LpMaximize)
+    # w => explanation is contained in the final set
+    w = pulp.LpVariable.dicts(
+        "w", range(n_exp), lowBound=0, upBound=1, cat=pulp.LpBinary
+    )
+    # y => coverage of points by the final set
+    y = pulp.LpVariable.dicts(
+        "y", range(n_items), lowBound=0, upBound=1, cat=pulp.LpBinary
+    )
+    # z => coverage of individual explainers
+    z = pulp.LpVariable.dicts(
+        "z",
+        ((i, j) for i in range(n_exp) for j in range(n_items)),
+        lowBound=0,
+        upBound=1,
+        cat=pulp.LpBinary,
+    )
+
+    # add the coverage maximisation target
+    problem += pulp.lpSum(y[j] for j in range(n_items)), "Maximize_Coverage"
+
+    # Constraints
+    # z_ij <= w_i or y_j >= z_ij
+    for i in range(n_exp):
+        for j in range(n_items):
+            problem += z[(i, j)] <= w[i], f"z{i}{j}_leq_w{i}"
+            problem += y[j] >= z[(i, j)], f"or_y{j}_geq_z{i}{j}"
+
+    # y_j <= sum_i z_ij
+    for j in range(n_items):
+        problem += (
+            y[j] <= pulp.lpSum(z[(i, j)] for i in range(n_exp)),
+            f"or_y{j}_leq_sum_z{j}",
+        )
+
+    # locality-based constraints
+    for i in range(n_exp):
+        for j in range(n_items):
+            d_ij = dist_matrix[i][j].item()
+            problem += d_ij * z[(i, j)] <= radius, f"locality_{i}_{j}"
+
+    # minimum fidelity constraint
+    for i in range(n_exp):
+        problem += (
+            pulp.lpSum(
+                (match_matrix[i][j].item() - phi) * z[(i, j)] for j in range(n_items)
+            )
+            >= 0.0,
+            f"min_fidelity_{i}",
+        )
+
+    # budget constraint (size of exp set)
+    problem += pulp.lpSum(w[i] for i in range(n_exp)) <= k, "budget"
+
+    # Solve the problem
+    if time_limit is not None:
+        problem.solve(PULP_CBC_CMD(msg=True, timeLimit=time_limit))
+    else:
+        problem.solve()
+
+    selected_proxies = [i for i in range(n_exp) if pulp.value(w[i]) > 0.5]
+    if not selected_proxies:
+        raise ValueError(
+            "Problem is infeasible! Consider relaxing the constraints "
+            + f"(radius={radius}, minimum fidelity={phi})"
+        )
+    reduced_models = [explainer.local_models[i] for i in selected_proxies]
+    mapping = generate_minimal_loss_mapping(explainer, reduced_models)
+    vector_representation = explainer.vector_representation[selected_proxies, :]
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, selected_proxies
+    )
+    return reduced
+
+
+def find_proxies_glocalx(
+    explainer: LORERuleExplainer, k: int, strategy="fidelity", epsilon=None
+):
+    try:
+        from glocalx import GLocalX
+    except ModuleNotFoundError as e:
+        e.add_note("Importing GLocalX failed.")
+        e.add_note(
+            f"Ensure GLocalX path is set correctly in config.ini (currently {GLOCALX_PATH})."
+        )
+        raise
+    assert "LORERuleExplainer" in str(
+        explainer.__class__
+    ), f"GLocalX reduction only possible for rule-based local explanations (got {type(explainer)})!"
+    X_train, y_train = tonp(explainer.X), tonp(explainer.y)
+    tr_set = np.hstack((X_train, y_train[:, 0][:, None]))
+    glocalx = GLocalX()
+    glocalx.fit(explainer.rules, tr_set, batch_size=2)
+    reduced_rules = glocalx.rules(k, tr_set, strategy=strategy)
+
+    dummy_mapping = {i: 1 for i in range(explainer.X.shape[0])}
+    dummy_B = torch.zeros((k, explainer.X.shape[1]), dtype=explainer.dtype)
+    new_exp = explainer.clone_reduced([], dummy_mapping, dummy_B)
+    new_exp.rules = reduced_rules
+    new_exp.local_models = [
+        lambda x: new_exp._predict_from_rule(new_exp.rules[i], x)
+        for i in range(len(new_exp.rules))
+    ]
+    return new_exp

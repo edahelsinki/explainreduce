@@ -12,6 +12,23 @@ from typing import Any, List, Callable, Tuple, Dict, Union
 import explainreduce.utils as utils
 from abc import ABC, abstractmethod
 from sklearn.exceptions import NotFittedError
+from tqdm import tqdm
+import statistics
+from lore_sa.dataset import TabularDataset
+from lore_sa.bbox import sklearn_classifier_bbox
+from lore_sa.lore import TabularRandomGeneratorLore
+from lore_sa.encoder_decoder import ColumnTransformerEnc
+from lore_sa.neighgen import RandomGenerator
+from lore_sa.surrogate import DecisionTreeSurrogate
+import sys
+from pathlib import Path
+from configparser import ConfigParser
+
+curr_path = Path(__file__)
+config = ConfigParser()
+config.read(str(curr_path.parent.parent / "config.ini"))
+GLOCALX_PATH = config["Paths"]["GLOCALX_PATH"]
+sys.path.append(GLOCALX_PATH)
 
 
 class Explainer(ABC):
@@ -51,12 +68,14 @@ class Explainer(ABC):
         classifier=False,
         loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
         black_box_model=None,
+        dtype=torch.float32,
+        verbose=False,
         **explainer_kwargs,
     ) -> None:
-        self.X = torch.as_tensor(X)
+        self.X = torch.as_tensor(X, dtype=dtype)
         if self.X.ndim < 2:
             self.X = self.X[:, None]
-        self.y = torch.as_tensor(y)
+        self.y = torch.as_tensor(y, dtype=dtype)
         if self.y.ndim < 2:
             self.y = self.y[:, None]
             if classifier:
@@ -74,8 +93,10 @@ class Explainer(ABC):
         else:
             self.loss_fn = loss_fn
         self.L = None
-        self.explainer_kwargs = explainer_kwargs
         self.black_box_model = black_box_model
+        self.dtype = dtype
+        self.verbose = verbose
+        self.explainer_kwargs = explainer_kwargs
 
     def fit(self) -> None:
         """Fit the Explainer object. Train local models, generate a mapping and
@@ -90,6 +111,7 @@ class Explainer(ABC):
         local_models: List[Callable[[torch.Tensor], torch.Tensor]],
         mapping: Dict[int, int],
         vector_representation: torch.Tensor,
+        proxy_ids=None,
     ):
         """Clone this explainer with a new mapping and local model set."""
         if not self.is_fit:
@@ -97,7 +119,7 @@ class Explainer(ABC):
                 "Explainer not fitted! Please call .fit() before .clone_reduced()!"
             )
         reduced = self.__class__(
-            self.X, self.y, self.classifier, **self.explainer_kwargs
+            self.X, self.y, self.classifier, dtype=self.dtype, **self.explainer_kwargs
         )
         reduced.loss_fn = self.loss_fn
         reduced.black_box_model = self.black_box_model
@@ -137,7 +159,9 @@ class Explainer(ABC):
                 "Explainer not fitted! Please call .fit() before .predict()!"
             )
         mapped = self._map_to_training_data(X_new, mode=mapping_mode)
-        yhat = torch.atleast_2d(torch.empty((X_new.shape[0], self.y.shape[1])))
+        yhat = torch.atleast_2d(
+            torch.empty((X_new.shape[0], self.y.shape[1]), dtype=self.dtype)
+        )
         for i in range(X_new.shape[0]):
             yhat[i, :] = self.local_models[self.mapping[mapped[i]]](X_new[i, None])
         return yhat
@@ -157,7 +181,7 @@ class Explainer(ABC):
             X = self.X
         if y is None:
             y = self.y.clone()
-        L = torch.zeros((len(self.local_models), X.shape[0]))
+        L = torch.zeros((len(self.local_models), X.shape[0]), dtype=self.dtype)
         if y.ndim < 2:
             y = y[:, np.newaxis]
         for j in range(len(self.local_models)):
@@ -181,6 +205,14 @@ class Explainer(ABC):
         """Generate a vector representation in the shape of X_train."""
         return self.vector_representation[list(self.mapping.values()), :]
 
+    def black_box_predict(self):
+        if self.black_box_model is None:
+            raise ValueError("Black-box model not set!")
+        if (self.classifier) and (hasattr(self.black_box_model, "predict_proba")):
+            return self.black_box_model.predict_proba
+        else:
+            return self.black_box_model.predict
+
 
 class SLISEMAPExplainer(Explainer):
 
@@ -190,9 +222,13 @@ class SLISEMAPExplainer(Explainer):
         y: torch.Tensor,
         classifier=False,
         loss_fn=None,
+        dtype=torch.float32,
+        verbose=False,
         **explainer_kwargs,
     ) -> None:
-        super().__init__(X, y, classifier, loss_fn, **explainer_kwargs)
+        super().__init__(
+            X, y, classifier, loss_fn, dtype=dtype, verbose=verbose, **explainer_kwargs
+        )
 
     def _generate_local_models(
         self,
@@ -205,9 +241,10 @@ class SLISEMAPExplainer(Explainer):
             self.X,
             y,
             local_model=lm,
+            dtype=self.dtype,
             **self.explainer_kwargs,
         )
-        self.sm.optimise()
+        self.sm.optimise(verbose=self.verbose)
         B = self.sm.get_B(False)
 
         def create_exp(i):
@@ -215,7 +252,10 @@ class SLISEMAPExplainer(Explainer):
                 0, ...
             ]
 
-        local_models = [create_exp(i) for i in range(self.X.shape[0])]
+        if self.verbose:
+            local_models = [create_exp(i) for i in tqdm(range(self.X.shape[0]))]
+        else:
+            local_models = [create_exp(i) for i in range(self.X.shape[0])]
         mapping = {i: i for i in range(self.X.shape[0])}
         return local_models, mapping
 
@@ -237,9 +277,10 @@ class SLIPMAPExplainer(SLISEMAPExplainer):
             self.X,
             y,
             local_model=lm,
+            dtype=self.dtype,
             **self.explainer_kwargs,
         )
-        self.sm.optimise()
+        self.sm.optimise(verbose=self.verbose)
         B = self.sm.get_B(False)
 
         def create_exp(i):
@@ -247,7 +288,10 @@ class SLIPMAPExplainer(SLISEMAPExplainer):
                 0, ...
             ]
 
-        local_models = [create_exp(i) for i in range(self.X.shape[0])]
+        if self.verbose:
+            local_models = [create_exp(i) for i in tqdm(range(self.X.shape[0]))]
+        else:
+            local_models = [create_exp(i) for i in range(self.X.shape[0])]
         mapping = {i: i for i in range(self.X.shape[0])}
         return local_models, mapping
 
@@ -260,9 +304,13 @@ class SLISEExplainer(Explainer):
         epsilon: float,
         classifier=False,
         loss_fn=None,
+        dtype=torch.float32,
+        verbose=False,
         **explainer_kwargs,
     ) -> None:
-        super().__init__(X, y, classifier, loss_fn, **explainer_kwargs)
+        super().__init__(
+            X, y, classifier, loss_fn, dtype=dtype, verbose=verbose, **explainer_kwargs
+        )
         self.epsilon = epsilon
 
     def _generate_local_models(
@@ -285,7 +333,10 @@ class SLISEExplainer(Explainer):
                 )
             return self.s.predict
 
-        local_models = [create_exp(i) for i in range(self.X.shape[0])]
+        if self.verbose:
+            local_models = [create_exp(i) for i in tqdm(range(self.X.shape[0]))]
+        else:
+            local_models = [create_exp(i) for i in range(self.X.shape[0])]
         mapping = {i: i for i in range(self.X.shape[0])}
         return local_models, mapping
 
@@ -312,9 +363,20 @@ class SmoothGradExplainer(Explainer):
         classifier=False,
         loss_fn=None,
         black_box_model=None,
+        dtype=torch.float32,
+        verbose=False,
         **explainer_kwargs,
     ) -> None:
-        super().__init__(X, y, classifier, loss_fn, black_box_model, **explainer_kwargs)
+        super().__init__(
+            X,
+            y,
+            classifier,
+            loss_fn,
+            black_box_model,
+            dtype=dtype,
+            verbose=verbose,
+            **explainer_kwargs,
+        )
 
     def _generate_local_models(
         self,
@@ -324,7 +386,61 @@ class SmoothGradExplainer(Explainer):
             self.X.numpy(),
             self.black_box_model,
             "regression" if not self.classifier else "classification",
-            dtype=self.X.dtype,
+            dtype=self.dtype,
+            **self.explainer_kwargs,
+        )
+        B = torch.nan_to_num(B)
+        self.B = B
+
+        def create_exp(i):
+            if self.classifier:
+                return lambda X: logistic_regression(X, B, i)
+            else:
+                return lambda X: (B[i, :-1] @ X.T + B[i, -1]).clone().detach()
+
+        if self.verbose:
+            local_models = [create_exp(i) for i in tqdm(range(self.X.shape[0]))]
+        else:
+            local_models = [create_exp(i) for i in range(self.X.shape[0])]
+        mapping = {i: i for i in range(self.X.shape[0])}
+        return local_models, mapping
+
+    def _generate_vector_representation(self) -> torch.Tensor:
+        return self.B
+
+
+class SmoothGradTorchExplainer(Explainer):
+
+    def __init__(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        classifier=False,
+        loss_fn=None,
+        black_box_model=None,
+        dtype=torch.float32,
+        verbose=False,
+        **explainer_kwargs,
+    ) -> None:
+        super().__init__(
+            X,
+            y,
+            classifier,
+            loss_fn,
+            black_box_model,
+            dtype=dtype,
+            verbose=verbose,
+            **explainer_kwargs,
+        )
+
+    def _generate_local_models(
+        self,
+    ) -> Tuple[List[Callable[[torch.Tensor], torch.Tensor]], Dict[int, int]]:
+
+        B = get_local_models_smoothgrad(
+            self.X,
+            self.black_box_model,
+            "regression" if not self.classifier else "classification",
             **self.explainer_kwargs,
         )
         self.B = B
@@ -335,7 +451,10 @@ class SmoothGradExplainer(Explainer):
             else:
                 return lambda X: (B[i, :-1] @ X.T + B[i, -1]).clone().detach()
 
-        local_models = [create_exp(i) for i in range(self.X.shape[0])]
+        if self.verbose:
+            local_models = [create_exp(i) for i in tqdm(range(self.X.shape[0]))]
+        else:
+            local_models = [create_exp(i) for i in range(self.X.shape[0])]
         mapping = {i: i for i in range(self.X.shape[0])}
         return local_models, mapping
 
@@ -352,24 +471,41 @@ class LIMEExplainer(Explainer):
         classifier=False,
         loss_fn=None,
         black_box_model=None,
+        dtype=torch.float32,
+        verbose=False,
+        num_samples=5_000,
         **explainer_kwargs,
     ) -> None:
-        super().__init__(X, y, classifier, loss_fn, black_box_model, **explainer_kwargs)
+        super().__init__(
+            X,
+            y,
+            classifier,
+            loss_fn,
+            black_box_model,
+            dtype=dtype,
+            verbose=verbose,
+            **explainer_kwargs,
+        )
+        self.num_samples = num_samples
 
     def _generate_local_models(
         self,
     ) -> Tuple[List[Callable[[torch.Tensor], torch.Tensor]], Dict[int, int]]:
 
-        B, local_models = get_lime(
+        B, local_models, LIME_object = get_lime(
             self.X,
             self.y,
             self.black_box_model,
             classifier=self.classifier,
+            dtype=self.dtype,
+            verbose=self.verbose,
+            num_samples=self.num_samples,
             **self.explainer_kwargs,
         )
         self.B = B
 
         mapping = {i: i for i in range(self.X.shape[0])}
+        self._LIME_explainer = LIME_object
         return local_models, mapping
 
     def _generate_vector_representation(self) -> torch.Tensor:
@@ -385,9 +521,20 @@ class KernelSHAPExplainer(Explainer):
         classifier=False,
         loss_fn=None,
         black_box_model=None,
+        dtype=torch.float32,
+        verbose=False,
         **explainer_kwargs,
     ) -> None:
-        super().__init__(X, y, classifier, loss_fn, black_box_model, **explainer_kwargs)
+        super().__init__(
+            X,
+            y,
+            classifier,
+            loss_fn,
+            black_box_model,
+            dtype=dtype,
+            verbose=verbose,
+            **explainer_kwargs,
+        )
 
     def _generate_local_models(
         self,
@@ -397,7 +544,7 @@ class KernelSHAPExplainer(Explainer):
             self.X.numpy(),
             self.black_box_model,
             "regression" if not self.classifier else "classification",
-            dtype=self.X.dtype,
+            dtype=self.dtype,
             **self.explainer_kwargs,
         )
         self.B = B
@@ -408,7 +555,10 @@ class KernelSHAPExplainer(Explainer):
             else:
                 return lambda X: (B[i, :-1] @ X.T + B[i, -1]).clone().detach()
 
-        local_models = [create_exp(i) for i in range(self.X.shape[0])]
+        if self.verbose:
+            local_models = [create_exp(i) for i in tqdm(range(self.X.shape[0]))]
+        else:
+            local_models = [create_exp(i) for i in range(self.X.shape[0])]
         mapping = {i: i for i in range(self.X.shape[0])}
         return local_models, mapping
 
@@ -446,6 +596,278 @@ class KernelSHAPExplainerLegacy(Explainer):
 
     def _generate_vector_representation(self) -> torch.Tensor:
         return self.B
+
+
+class GlobalLinearExplainer(Explainer):
+    def __init__(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        classifier=False,
+        loss_fn=None,
+        black_box_model=None,
+        dtype=torch.float32,
+        verbose=False,
+        **explainer_kwargs,
+    ) -> None:
+        super().__init__(
+            X,
+            y,
+            classifier,
+            loss_fn,
+            black_box_model,
+            dtype=dtype,
+            verbose=False,
+            **explainer_kwargs,
+        )
+        self.lasso = explainer_kwargs.get("lasso", 0.0)
+        self.ridge = explainer_kwargs.get("ridge", 0.0)
+        self.intercept = explainer_kwargs.get("intercept", True)
+
+    def _generate_local_models(
+        self,
+    ) -> Tuple[List[Callable[[torch.Tensor], torch.Tensor]], Dict[int, int]]:
+
+        self.B = get_single_global_model(
+            self.X,
+            self.y,
+            self.classifier,
+            self.loss_fn,
+            self.lasso,
+            self.ridge,
+            intercept=self.intercept,
+        )
+
+        def local_model(X: torch.Tensor):
+            if self.intercept:
+                X = torch.cat([X, torch.ones(X.shape[0], 1)], dim=1)
+            if self.classifier:
+                yhat = torch.sigmoid(X @ self.B)[:, None]
+                return torch.hstack((yhat, 1.0 - yhat))
+            else:
+                return (X @ self.B)[:, None]
+
+        local_models = [local_model] * self.X.shape[0]
+        mapping = {i: 0 for i in range(self.X.shape[0])}
+        return local_models, mapping
+
+    def _generate_vector_representation(self) -> torch.Tensor:
+        return self.B.repeat(self.X.shape[0], 1)
+
+    def black_box_predict(self):
+        """Use associated black box model for predictions."""
+        if self.black_box_model is None:
+            raise ValueError("Black-box model not set!")
+        if (self.classifier) and (hasattr(self.black_box_model, "predict_proba")):
+            return self.black_box_model.predict_proba
+        else:
+            return self.black_box_model.predict
+
+    def predict_train(self):
+        """Convenience method to generate predictions on the train set."""
+        yhat = torch.zeros_like(self.y)
+        for i in range(self.X.shape[0]):
+            yhat[i, :] = self.local_models[self.mapping[i]](self.X[i, None])
+        return yhat
+
+
+class LORERuleExplainer(Explainer):
+    try:
+        from models import Rule
+    except ModuleNotFoundError as e:
+        e.add_note("Importing GLocalX failed.")
+        e.add_note(
+            f"Ensure GLocalX path is set correctly in config.ini (currently {GLOCALX_PATH})."
+        )
+        raise
+
+    def __init__(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        classifier=True,
+        loss_fn=None,
+        black_box_model=None,
+        dtype=torch.float32,
+        verbose=False,
+        strategy="majority",
+        num_instances=1000,
+        **explainer_kwargs,
+    ) -> None:
+        if not classifier:
+            raise ValueError("LOREExplainer only available for classifier models!")
+        # convert y to labels if necessary; LORE expects clean labels
+        y = torch.round(torch.as_tensor(y))
+        super().__init__(
+            X,
+            y,
+            classifier,
+            loss_fn,
+            black_box_model,
+            dtype=dtype,
+            verbose=verbose,
+            **explainer_kwargs,
+        )
+        # set up dataset
+        df = pd.DataFrame(utils.tonp(X))
+        df.loc[:, "target"] = utils.tonp(y[:, 1])
+        df.loc[:, "target"] = df["target"].astype("category")
+        df.columns = [str(c) for c in df.columns]
+        self.dataset = TabularDataset(df, class_name="target")
+        # set up LORE-specific objects
+        self.bbox = sklearn_classifier_bbox.sklearnBBox(black_box_model)
+        self.lore = TabularRandomGeneratorLore(self.bbox, self.dataset)
+        self.tabular_enc = ColumnTransformerEnc(self.dataset.descriptor)
+        self.gen = RandomGenerator(
+            bbox=self.bbox, dataset=self.dataset, encoder=self.tabular_enc, ocr=0.1
+        )
+        self.verbose = verbose
+        self.strategy = strategy
+        self.num_instances = num_instances
+        if self.strategy == "majority":
+            self.mode_y = int(statistics.mode(self.y[:, 1]))
+
+    def _generate_local_models(
+        self,
+    ) -> Tuple[List[Callable[[torch.Tensor], torch.Tensor]], Dict[int, int]]:
+
+        def _create_exp(i: int):
+            x = self.dataset.df.iloc[i][:-1]
+            z = self.tabular_enc.encode([x.values])[0].astype(float)
+
+            neighbour = self.gen.generate(
+                z,
+                self.num_instances,
+                self.dataset.descriptor,
+                self.tabular_enc,
+                **self.explainer_kwargs,
+            )
+
+            neighb_train_X = self.tabular_enc.decode(neighbour)
+            neighb_train_y = self.bbox.predict(neighb_train_X)
+            if neighb_train_y.ndim == 2:
+                neighb_train_y = neighb_train_y[:, 1]
+            # encode the target class to the surrogate model
+            neighb_train_yz = self.tabular_enc.encode_target_class(
+                neighb_train_y.reshape(-1, 1)
+            ).squeeze()
+
+            dt = DecisionTreeSurrogate()
+            dt.train(neighbour, neighb_train_yz)
+            rule = dt.get_rule(z, self.tabular_enc)
+
+            return rule.to_dict()
+
+        if self.verbose:
+            rules = [_create_exp(i) for i in tqdm(range(self.X.shape[0]))]
+        else:
+            rules = [_create_exp(i) for i in range(self.X.shape[0])]
+        self.rules = self.lore_to_glocalx(rules)
+        mapping = {i: i for i in range(self.X.shape[0])}
+        local_models = [
+            lambda x: self._predict_from_rule(self.rules[i], x)
+            for i in range(len(self.rules))
+        ]
+        return local_models, mapping
+
+    def _predict_from_rule(self, rule: Rule, X: torch.Tensor):
+        valid_train_items = torch.tensor(
+            [rule.covers(X[i, :]) for i in range(X.shape[0])]
+        )
+        yhat = torch.zeros((X.shape[0], 2), dtype=self.dtype)
+        yhat[valid_train_items, rule.consequence] = 1.0
+        if self.strategy == "negation":
+            yhat[torch.logical_not(valid_train_items), 1 - rule.consequence] = 1.0
+        elif self.strategy == "majority":
+            yhat[torch.logical_not(valid_train_items), self.mode_y] = 1.0
+        return yhat
+
+    def predict(self, X_new: torch.Tensor, mode=None):
+        ruleset_losses = torch.zeros(len(self.local_models))
+
+        for i, rule in enumerate(self.local_models):
+            yhat = rule(self.X)
+            loss = ((torch.sqrt(yhat) - torch.sqrt(self.y)) ** 2).sum(dim=-1) * 0.5
+            ruleset_losses[i] = torch.mean(loss)
+
+        yhat_new = np.zeros((X_new.shape[0], 2))
+        for i in range(X_new.shape[0]):
+            item = X_new[i, :]
+            applicable_rules = [j for j, r in enumerate(self.rules) if r.covers(item)]
+            relevant_losses = ruleset_losses[applicable_rules]
+            min_loss = torch.min(relevant_losses)
+            best_rules = torch.where(torch.isclose(relevant_losses, min_loss))[0]
+            rule_idx = np.random.choice(utils.tonp(best_rules))
+            chosen_rule = self.rules[rule_idx]
+            yhat_new[i, chosen_rule.consequence] = 1.0
+        return torch.as_tensor(yhat_new, dtype=self.dtype)
+
+    def clone_reduced(
+        self,
+        local_models: List[Callable[[torch.Tensor], torch.Tensor]],
+        mapping: Dict[int, int],
+        vector_representation: torch.Tensor,
+        proxy_ids=None,
+    ):
+        """Clone this explainer with a new mapping and local model set."""
+        if not self.is_fit:
+            raise NotFittedError(
+                "Explainer not fitted! Please call .fit() before .clone_reduced()!"
+            )
+        reduced = self.__class__(
+            self.X, self.y, self.classifier, dtype=self.dtype, **self.explainer_kwargs
+        )
+        reduced.loss_fn = self.loss_fn
+        reduced.black_box_model = self.black_box_model
+        reduced.local_models = local_models
+        reduced.mapping = mapping
+        reduced.vector_representation = vector_representation
+        reduced.is_fit = True
+        if proxy_ids is not None:
+            reduced.rules = [self.rules[i] for i in proxy_ids]
+        return reduced
+
+    def _generate_vector_representation(self) -> torch.Tensor:
+        return torch.zeros_like(self.X, dtype=self.dtype) - 1.0
+
+    def lore_to_glocalx(self, rules: List[dict[str, Any]]):
+        class_values = list(range(self.y.shape[1] + 1))
+        feature_names = list(self.dataset.df.columns)
+        output_rules = []
+        for rule in rules:
+            consequence = class_values.index(int(rule["consequence"]["val"]))
+            premises = rule["premises"]
+            features = [feature_names.index(premise["attr"]) for premise in premises]
+            ops = [premise["op"] for premise in premises]
+            values = [premise["val"] for premise in premises]
+            values_per_feature = {
+                feature: [val for f, val in zip(features, values) if f == feature]
+                for feature in features
+            }
+            ops_per_feature = {
+                feature: [op for f, op in zip(features, ops) if f == feature]
+                for feature in features
+            }
+
+            output_premises = {}
+            for f in features:
+                values, operators = values_per_feature[f], ops_per_feature[f]
+                # 1 value, either <= or >
+                if len(values) == 1:
+                    if operators[0] == "<=":
+                        output_premises[f] = (-np.inf, values[0])
+                    else:
+                        output_premises[f] = (values[0], np.inf)
+                # 2 values, < x <=
+                else:
+                    output_premises[f] = (min(values), max(values))
+
+            transformed_rule = Rule(
+                premises=output_premises, consequence=consequence, names=feature_names
+            )
+            output_rules.append(transformed_rule)
+
+        return output_rules
 
 
 # Get the explainer
@@ -578,7 +1000,17 @@ def get_shap(X, y, model, partition=False, classifier=False):
     return B, explanations
 
 
-def get_lime(X, y, model, classifier=False, discretize=True, **lime_kwargs):
+def get_lime(
+    X,
+    y,
+    model,
+    classifier=False,
+    discretize=True,
+    dtype=None,
+    verbose=False,
+    num_samples=5_000,
+    **lime_kwargs,
+):
     """Get LIME prediction function.
 
     Args:
@@ -593,7 +1025,8 @@ def get_lime(X, y, model, classifier=False, discretize=True, **lime_kwargs):
     Returns:
         A function to predict the label of new instances based on the LIME explanations.
     """
-    dtype = X.dtype
+    if dtype is None:
+        dtype = X.dtype
     X = utils.tonp(X)
     y = utils.tonp(y)
     explainer = LimeTabularExplainer(
@@ -619,7 +1052,7 @@ def get_lime(X, y, model, classifier=False, discretize=True, **lime_kwargs):
 
             return torch.as_tensor(Y, dtype=dtype)
 
-        exp = explainer.explain_instance(X[i, :], pred_fn, num_samples=50)
+        exp = explainer.explain_instance(X[i, :], pred_fn, num_samples=num_samples)
         b = np.zeros((1, X.shape[1]))
         for j, v in exp.as_map()[1]:
             b[0, j] = v
@@ -629,10 +1062,13 @@ def get_lime(X, y, model, classifier=False, discretize=True, **lime_kwargs):
 
         return b, _lime_predict
 
-    lime_models = [explain(i) for i in range(X.shape[0])]
+    if verbose:
+        lime_models = [explain(i) for i in tqdm(range(X.shape[0]))]
+    else:
+        lime_models = [explain(i) for i in range(X.shape[0])]
     B = torch.vstack([torch.as_tensor(lm[0], dtype=dtype) for lm in lime_models])
     explanations = [lm[1] for lm in lime_models]
-    return B, explanations
+    return B, explanations, explainer
 
 
 def get_slisemap(X, y, classifier=False, **slisemap_params):
@@ -867,3 +1303,37 @@ def logistic_regression(X: torch.Tensor, B: torch.Tensor, i: int):
 def logistic_regression_loss(Y, Yhat):
     """Calculate the Hellinger distance between two (multidimensional) probability distributions."""
     return ((Yhat.sqrt() - Y.sqrt().expand(Yhat.shape)) ** 2).sum(dim=-1) * 0.5
+
+
+def get_single_global_model(
+    X, Y, classifier, loss_fn, lasso=0.0, ridge=0.0, intercept=False
+):
+    n_samples, n_features = X.shape
+    if intercept:
+        X = torch.cat([X, torch.ones(n_samples, 1)], dim=1)
+        n_features += 1
+    B = torch.zeros(n_features, dtype=X.dtype, device=X.device, requires_grad=True)
+
+    def loss() -> torch.Tensor:
+        yhat = (X @ B)[:, None]
+        if classifier:
+            yhat = torch.sigmoid(yhat)
+            yhat = torch.hstack((yhat, 1.0 - yhat))
+        loss_val = loss_fn(Y, yhat).mean()
+        if lasso > 0:
+            loss_val += lasso * torch.sum(B.abs())
+        if ridge > 0:
+            loss_val += ridge * torch.sum(torch.square(B))
+        return loss_val
+
+    optimiser = LBFGS([B], line_search_fn="strong_wolfe")
+
+    def closure() -> torch.Tensor:
+        optimiser.zero_grad()
+        loss_val = loss()
+        loss_val.backward()
+
+        return loss_val
+
+    loss_val = optimiser.step(closure)
+    return B.detach()
