@@ -14,7 +14,8 @@ from utils.utils import (
     read_parquet,
     get_explainer,
 )
-from utils.hyperparameters import get_data, get_bb
+from utils.hyperparameters import get_data, get_bb, get_params
+from sklearn.model_selection import train_test_split
 from functools import reduce, partial
 import torch
 import explainreduce.localmodels as lm
@@ -49,6 +50,10 @@ def preprocess_results(odf: pd.DataFrame) -> pd.DataFrame:
         df["proxy_method"].str.contains("greedy_min_loss_k_[0-9]+_min_cov"),
         "proxy_method_mod",
     ] = "Const Min loss"
+    df.loc[
+        df["proxy_method"].str.contains("balanced"),
+        "proxy_method_mod",
+    ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
     return df
 
@@ -277,6 +282,9 @@ def get_optimisation_method(coverage, p):
         ),
         ("greedy_min_loss_k_5_min_cov", coverage, p): partial(
             px.find_proxies_greedy_min_loss_k_min_cov, k=5, p=p, min_coverage=coverage
+        ),
+        ("greedy_balanced_k_5", coverage, p): partial(
+            px.find_proxies_loss_cov_linear, k=5, p=p
         ),
         #         ("max_coverage_k_5", coverage, p): partial(
         #             px.find_proxies_coverage, k=5, p=p, time_limit=30
