@@ -75,12 +75,16 @@ def plot_results(df: pd.DataFrame):
         df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
         "proxy_method_mod",
     ] = "Const Min Loss"
+    df.loc[
+        df["proxy_method"].str.contains("balanced"),
+        "proxy_method_mod",
+    ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
     df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
     df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
     exp_methods = ["LIME", "SHAP", "SLISEMAP"]
     datasets = ["Gas Turbine", "Jets"]
-    reduction_methods = ["Min Loss", "Max Coverage", "Const Min Loss", "Random"]
+    reduction_methods = ["Min Loss", "Max Coverage", "Balanced", "Random"]
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
     p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
@@ -307,6 +311,7 @@ def get_optimisation_method(k: int = 5, explainer: lm.Explainer = None):
             px.find_proxies_coverage, k=k, time_limit=300, pulp_msg=False
         ),
         (f"random_k_{k}", k): partial(px.find_proxies_random, k=k),
+        (f"greedy_balanced_{k}", k): partial(px.find_proxies_loss_cov_linear, k=k),
         # (f"min_loss_{k}", k): partial(px.find_proxies_loss, k=k, time_limit=300),
         (f"greedy_min_loss_{k}", k): partial(px.find_proxies_greedy_k_min_loss, k=k),
         (f"greedy_min_loss_{k}_min_cov", k): partial(
