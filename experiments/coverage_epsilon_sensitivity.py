@@ -55,168 +55,33 @@ def preprocess_results(odf: pd.DataFrame) -> pd.DataFrame:
         "proxy_method_mod",
     ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
+    df = df.loc[df["proxy_method_mod"] == "Balanced"]
+    df = df.loc[~df["exp_method"].isin(["VanillaGrad", "GlobalLinear", "SLIPMAP"])]
+    df = df.loc[df["init_p"] != 0.41]
     return df
-
-
-def plot_result_small(df: pd.DataFrame):
-    plt.rcParams.update({"font.size": 16})
-    exp_methods = ["LIME", "SHAP", "SLISEMAP"]
-    datasets = ["Gas Turbine", "Jets"]
-    p_df = df.loc[df["exp_method"].isin(exp_methods)]
-    p_df = p_df.loc[p_df["data"].isin(datasets)]
-    fig, ax = plt.subplots(ncols=4, figsize=(25, 5.5))
-    r_df = p_df.rename(
-        columns={
-            "proxy_method_mod": "Reduction method",
-            "exp_method": "XAI method",
-        }
-    )
-    dot_size = 150
-    gs = r_df.loc[r_df["data"] == "Gas Turbine"]
-    j = r_df.loc[r_df["data"] == "Jets"]
-    # gas turbine - epsilon
-    sns.scatterplot(
-        gs.loc[gs["init_p"] != 0.41],
-        x="init_p",
-        y="proxy_fidelity",
-        hue="Reduction method",
-        style="XAI method",
-        ax=ax[0],
-        s=dot_size,
-    )
-    ax[0].set_title("Gas Turbine")
-    ax[0].set_ylim([0, 1.0])
-    ax[0].get_legend().remove()
-    ax[0].set_ylabel("Fidelity")
-    ax[0].set_xlabel("Error tolerance")
-    # gas turbine - c
-    sns.scatterplot(
-        gs.loc[
-            (gs["init_coverage"] != 0.61) & (gs["Reduction method"] == "Const Min loss")
-        ],
-        x="init_coverage",
-        y="proxy_fidelity",
-        color="tab:orange",
-        style="XAI method",
-        ax=ax[1],
-        s=dot_size,
-    )
-    ax[1].set_title("Gas Turbine")
-    ax[1].set_ylim([0, 1.0])
-    ax[1].get_legend().remove()
-    ax[1].set_ylabel(None)
-    ax[1].set_yticklabels([])
-    ax[1].set_xlabel("Minimum coverage")
-    # jets - epsilon
-    sns.scatterplot(
-        j.loc[j["init_coverage"] != 0.61],
-        x="init_coverage",
-        y="proxy_fidelity",
-        hue="Reduction method",
-        style="XAI method",
-        ax=ax[2],
-        s=dot_size,
-    )
-    ax[2].set_title("Jets")
-    ax[2].set_ylim([0, 1.0])
-    ax[2].legend(bbox_to_anchor=(2.75, -0.15), ncol=9)
-    ax[2].set_ylabel(None)
-    ax[2].set_yticklabels([])
-    ax[2].set_xlabel("Error tolerance")
-    # jets - c
-    sns.scatterplot(
-        j.loc[(j["init_p"] != 0.41) & (j["Reduction method"] == "Const Min loss")],
-        x="init_p",
-        y="proxy_fidelity",
-        color="tab:orange",
-        style="XAI method",
-        ax=ax[3],
-        s=dot_size,
-    )
-    ax[3].set_title("Jets")
-    ax[3].set_ylim([0, 1.0])
-    ax[3].get_legend().remove()
-    ax[3].set_ylabel(None)
-    ax[3].set_yticklabels([])
-    ax[3].set_xlabel("Minimum coverage")
-    # fig.tight_layout()
-    plt.savefig(
-        MANUSCRIPT_DIR / "coverage_p_sensitivity.pdf", bbox_inches="tight", dpi=300
-    )
-
-
-def plot_result_full(df: pd.DataFrame):
-    plt.rcParams.update({"font.size": 20})
-    num_datasets = len(pd.unique(df["data"]))
-    r_df = df.rename(
-        columns={
-            "proxy_method_mod": "Reduction method",
-            "exp_method": "XAI method",
-        }
-    )
-
-    fig, ax = plt.subplots(
-        nrows=num_datasets // 2 + (num_datasets % 2), ncols=4, figsize=(30, 30)
-    )
-    row_counter = 0
-    col_counter = 0
-    for dname, gdf in r_df.groupby("data"):
-        curr_ax = ax[row_counter, col_counter]
-        # error tolerance
-        sns.lineplot(
-            gdf.loc[gdf["init_p"] != 0.41],
-            x="init_p",
-            y="proxy_fidelity",
-            hue="Reduction method",
-            style="XAI method",
-            ax=curr_ax,
-        )
-        curr_ax.set_title(dname)
-        curr_ax.set_ylim(bottom=0)
-        curr_ax.set_ylabel("Fidelity")
-        curr_ax.set_xlabel("Error tolerance")
-        if row_counter == 0 and col_counter == 0:
-            curr_ax.legend(bbox_to_anchor=(4.5, -3.75), ncol=6)
-        else:
-            curr_ax.get_legend().remove()
-        col_counter += 1
-        # coverage
-        curr_ax = ax[row_counter, col_counter]
-        sns.lineplot(
-            gdf.loc[
-                (gdf["init_coverage"] != 0.61)
-                & (gdf["Reduction method"] == "Const Min loss")
-            ],
-            x="init_coverage",
-            y="proxy_fidelity",
-            color="tab:red",
-            style="XAI method",
-            ax=curr_ax,
-        )
-        curr_ax.set_title(dname)
-        curr_ax.set_ylim(bottom=0)
-        curr_ax.get_legend().remove()
-        curr_ax.set_ylabel(None)
-        curr_ax.set_yticklabels([])
-        curr_ax.set_xlabel("Minimum coverage")
-        col_counter += 1
-        if col_counter > 3:
-            row_counter += 1
-            col_counter = 0
-    fig.tight_layout()
-    # fig.subplots_adjust(hspace=0.4, left=-0.1)
-    plt.savefig(
-        MANUSCRIPT_DIR / "coverage_p_sensitivity_full.pdf",
-        dpi=300,
-        bbox_inches="tight",
-    )
 
 
 def plot_results(df: pd.DataFrame):
     """Produce a small and large plot of the results and save to the repo."""
     df = preprocess_results(df)
-    plot_result_small(df)
-    plot_result_full(df)
+    g = sns.relplot(
+        df,
+        x="init_p",
+        y="proxy_fidelity",
+        hue="exp_method",
+        style="exp_method",
+        col="data",
+        col_wrap=4,
+        kind="line",
+        facet_kws={"sharey": False},
+    )
+    for i, ax in enumerate(g.axes):
+        if i > 7:
+            ax.set_xlabel("p")
+        if i % 4 == 0:
+            ax.set_ylabel("Fidelity")
+        ax.set_title(df["data"].unique()[i])
+    g.fig.savefig(MANUSCRIPT_DIR / "epsilon_sensitivity_new.pdf", dpi=300)
 
 
 def prepare_data(dataset_fun):
@@ -274,28 +139,9 @@ def get_explainer(dname, bb, cls):
 
 def get_optimisation_method(coverage, p):
     return {
-        # ("minimal_set_cov", coverage, p): partial(
-        # px.find_proxies_minimal_set, min_coverage=coverage, p=p, time_limit=30
-        # ),
-        ("greedy_max_coverage_k_5", coverage, p): partial(
-            px.find_proxies_greedy, k=5, p=p
-        ),
-        ("greedy_min_loss_k_5_min_cov", coverage, p): partial(
-            px.find_proxies_greedy_min_loss_k_min_cov, k=5, p=p, min_coverage=coverage
-        ),
         ("greedy_balanced_k_5", coverage, p): partial(
-            px.find_proxies_loss_cov_linear, k=5, p=p
+            px.find_proxies_loss_cov_linear, k=6, p=p
         ),
-        #         ("max_coverage_k_5", coverage, p): partial(
-        #             px.find_proxies_coverage, k=5, p=p, time_limit=30
-        #         ),
-        ("random_k_10", coverage, p): partial(px.find_proxies_random, k=10),
-        # ("greedy_min_loss", coverage, p): partial(
-        # px.find_proxies_greedy_min_loss, min_coverage=coverage, p=p
-        # ),
-        # (f"min_loss_k_5", coverage, p): partial(
-        # px.find_proxies_loss, k=5, time_limit=300
-        # ),
     }
 
 
@@ -316,7 +162,7 @@ def calculate_vector_distance(orig_vectors, other_vectors, dataset_type):
     return D.mean().item()
 
 
-def evaluate(job_id: int, coverages: list, ps: list) -> None:
+def evaluate(job_id: int, ps: list) -> None:
     """Evaluate the full set of optimisation problems."""
     print(f"Begin job {job_id}.", flush=True)
     np.random.seed(1618 + job_id)
@@ -359,45 +205,6 @@ def evaluate(job_id: int, coverages: list, ps: list) -> None:
             full_fidelity = (
                 loss_fn(torch.as_tensor(yhat_test), explainer_yhat_test).mean().item()
             )
-
-            print("Loop over coverages.")
-            cov_options = [
-                get_optimisation_method(coverage=c, p=0.41) for c in coverages
-            ]
-            cov_options = reduce(operator.ior, cov_options, {})
-            for (pname, coverage, p), proxy_method in cov_options.items():
-                if (
-                    not results.empty
-                    and (
-                        (results["data"] == dname)
-                        & (results["exp_method"] == expname)
-                        & (results["proxy_method"] == pname)
-                        & (results["init_coverage"] == coverage)
-                        & (results["init_p"] == p)
-                    ).any()
-                ):
-                    continue
-                res = eval_proxy_method(
-                    job_id,
-                    dname,
-                    expname,
-                    explainer,
-                    pname,
-                    proxy_method,
-                    coverage,
-                    p,
-                    X,
-                    X_test,
-                    y,
-                    y_test,
-                    yhat_test,
-                    loss_fn,
-                    L,
-                    full_fidelity,
-                    nn,
-                )
-                results = pd.concat((results, pd.DataFrame([res])), ignore_index=True)
-                results.to_parquet(output_file)
 
             print("Loop over ps.")
             p_options = [get_optimisation_method(coverage=0.61, p=p) for p in ps]
@@ -508,8 +315,7 @@ if __name__ == "__main__":
         df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
         plot_results(df)
     else:
-        coverages = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         ps = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
         time = timer()
-        evaluate(int(sys.argv[1]), coverages=coverages, ps=ps)
+        evaluate(int(sys.argv[1]), ps=ps)
         print(f"Total runtime {timer() - time} seconds.", flush=True)
