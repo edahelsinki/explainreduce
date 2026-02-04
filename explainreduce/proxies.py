@@ -1024,6 +1024,19 @@ def find_proxies_loss_cov_linear(
     p: float = 0.33,
     epsilon: float = None,
 ):
+    """Greedily search for a set of k proxies which attain a maximum joint utility
+    between fidelity and coverage.
+    Parameters
+    ----------
+        explainer: a trained explainer object
+        k: size of the proxy set
+        lambda_weight: trade-off parameter between fidelity and coverage. defaults to 0.5
+        p: proportion of applicable models for automatically setting epsilon. if p is
+            set, epsilon is calculated as the p-th quantile of L.
+        epsilon: the maximum allowed loss value for a model to be considered applicable
+            for coverage calculation.
+    """
+
     if (lambda_weight < 0) or (lambda_weight > 1):
         raise ValueError(f"lambda_weight must be in [0, 1] (got {lambda_weight})!")
     L = explainer.get_L()  # (m_models, n_items)
