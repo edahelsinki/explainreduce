@@ -37,6 +37,7 @@ from localmodels import (
 )
 from sklearn.cluster import KMeans
 import explainreduce.metrics as metrics
+from explainreduce.utils import tonp
 import warnings
 
 
