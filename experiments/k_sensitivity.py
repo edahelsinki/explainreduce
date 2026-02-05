@@ -69,7 +69,7 @@ def plot_k_fidelity_coverage(df: pd.DataFrame):
         "proxy_method_mod",
     ] = "Const Min Loss"
     df.loc[
-        df["proxy_method"].str.contains("balanced"),
+        df["proxy_method"].str.contains("linear_combination"),
         "proxy_method_mod",
     ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
@@ -77,7 +77,7 @@ def plot_k_fidelity_coverage(df: pd.DataFrame):
     df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
     exp_methods = ["LIME", "SHAP", "SLISEMAP"]
     datasets = ["Gas Turbine", "Jets"]
-    reduction_methods = ["Min Loss", "Max Coverage", "Const Min Loss", "Random"]
+    reduction_methods = ["Min Loss", "Max Coverage", "Balanced", "Random"]
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
     p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
@@ -212,13 +212,13 @@ def plot_k_sensitivity_full(df: pd.DataFrame):
         "proxy_method_mod",
     ] = "Const Min Loss"
     df.loc[
-        df["proxy_method"].str.contains("balanced"),
+        df["proxy_method"].str.contains("linear_combination"),
         "proxy_method_mod",
     ] = "Balanced"
     exp_methods = ["LIME", "LORE", "SHAP", "SmoothGrad", "SLISEMAP"]
     datasets = df["data"].unique()
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
-    reduction_methods = ["Min Loss", "Max Coverage", "Const Min Loss", "Random"]
+    reduction_methods = ["Min Loss", "Max Coverage", "Balanced", "Random"]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
     p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
     p_df = p_df.sort_values(["data", "exp_method"])
@@ -359,7 +359,7 @@ def get_optimisation_method(k: int, explainer: lm.Explainer):
             min_coverage=0.8,
             raise_on_infeasible=False,
         ),
-        (f"greedy_balanced_{k}", k): partial(
+        (f"greedy_linear_combination_{k}", k): partial(
             px.find_proxies_loss_cov_linear,
             k=k,
         ),
@@ -397,7 +397,7 @@ def plot_global_comp(df: pd.DataFrame):
         "proxy_method_mod",
     ] = "Const Min Loss"
     df.loc[
-        df["proxy_method"].str.contains("balanced"),
+        df["proxy_method"].str.contains("linear_combination"),
         "proxy_method_mod",
     ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
@@ -432,7 +432,7 @@ def plot_global_comp(df: pd.DataFrame):
     gdf = pd.concat(gdfs, ignore_index=True)
     gdf.loc[:, "k"] = gdf["k"].astype(int)
     reduction_methods = [
-        "Const Min Loss",
+        "Balanced",
         "Submodular pick",
         "GLocalX",
         "Global linear",
@@ -491,7 +491,6 @@ def plot_global_comp(df: pd.DataFrame):
         kind="line",
         facet_kws={"sharey": False},
         **paper_theme(aspect=2, cols=5, rows=3, scaling=1.2),
-        legend=None,
     )
     i_f = 0
     for i, variable in enumerate(spdf["variable"].unique()):
@@ -556,7 +555,7 @@ def plot_global_comp_full(df: pd.DataFrame):
         "proxy_method_mod",
     ] = "Greedy Min loss (minimum coverage)"
     df.loc[
-        df["proxy_method"].str.contains("balanced"),
+        df["proxy_method"].str.contains("linear_combination"),
         "proxy_method_mod",
     ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
@@ -670,7 +669,6 @@ def plot_global_comp_full(df: pd.DataFrame):
             ),
             palette=palette,
             dashes=style,
-            legend=None,
         )
         i_f = 0
         for i, variable in enumerate(spdf["variable"].unique()):
@@ -708,28 +706,6 @@ def plot_global_comp_full(df: pd.DataFrame):
                     g.axes[i, j].set_yscale("log")
                 i_f += 1
             g.axes[i, 0].set_ylabel(variable)
-        handles = []
-        for line, label in zip(
-            g.axes.flat[0].get_lines(), spdf["Reduction method"].unique()
-        ):
-            handles.append(
-                plt.Line2D(
-                    [0],
-                    [0],
-                    color=line.get_color(),  # Use the modified color
-                    lw=line.get_linewidth(),  # Use the modified line width
-                    linestyle=line.get_linestyle(),
-                    label=label,  # Label from the data
-                )
-            )
-        g.figure.legend(
-            handles=handles,
-            title="Reduction method",
-            bbox_to_anchor=(0.5, 0.0),
-            loc="upper center",
-            ncol=len(handles),
-        )
-        plt.tight_layout()
         plt.savefig(MANUSCRIPT_DIR / f"global_comp_full_{dataset}.pdf", dpi=600)
 
 
@@ -945,7 +921,7 @@ def generate_summary_latex(df_in: pd.DataFrame, k=6) -> str:
         "\\label{tab:proxy_summary}\n"
         "\\end{table}"
     )
-    with open("../ms/global_comparison.tex", "w") as f:
+    with open(MANUSCRIPT_DIR / "global_comparison.tex", "w") as f:
         f.write(latex_wrapper)
 
 
