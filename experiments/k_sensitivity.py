@@ -68,12 +68,16 @@ def plot_k_fidelity_coverage(df: pd.DataFrame):
         df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
         "proxy_method_mod",
     ] = "Const Min Loss"
+    df.loc[
+        df["proxy_method"].str.contains("linear_combination"),
+        "proxy_method_mod",
+    ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
     df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
     df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
     exp_methods = ["LIME", "SHAP", "SLISEMAP"]
     datasets = ["Gas Turbine", "Jets"]
-    reduction_methods = ["Min Loss", "Max Coverage", "Const Min Loss", "Random"]
+    reduction_methods = ["Min Loss", "Max Coverage", "Balanced", "Random"]
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
     p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
@@ -207,10 +211,14 @@ def plot_k_sensitivity_full(df: pd.DataFrame):
         df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
         "proxy_method_mod",
     ] = "Const Min Loss"
+    df.loc[
+        df["proxy_method"].str.contains("linear_combination"),
+        "proxy_method_mod",
+    ] = "Balanced"
     exp_methods = ["LIME", "LORE", "SHAP", "SmoothGrad", "SLISEMAP"]
     datasets = df["data"].unique()
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
-    reduction_methods = ["Min Loss", "Max Coverage", "Const Min Loss", "Random"]
+    reduction_methods = ["Min Loss", "Max Coverage", "Balanced", "Random"]
     p_df = p_df.loc[p_df["data"].isin(datasets)]
     p_df = p_df.loc[p_df["proxy_method_mod"].isin(reduction_methods)]
     p_df = p_df.sort_values(["data", "exp_method"])
@@ -351,6 +359,10 @@ def get_optimisation_method(k: int, explainer: lm.Explainer):
             min_coverage=0.8,
             raise_on_infeasible=False,
         ),
+        (f"greedy_linear_combination_{k}", k): partial(
+            px.find_proxies_loss_cov_linear,
+            k=k,
+        ),
         (f"submodular_pick_{k}", k): partial(px.find_proxies_submodular_pick, k=k),
         (f"max_ball_coverage_{k}", k): partial(
             px.find_proxies_max_cov_ball_cover,
@@ -384,6 +396,10 @@ def plot_global_comp(df: pd.DataFrame):
         df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
         "proxy_method_mod",
     ] = "Const Min Loss"
+    df.loc[
+        df["proxy_method"].str.contains("linear_combination"),
+        "proxy_method_mod",
+    ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
     df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
     df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
@@ -416,7 +432,7 @@ def plot_global_comp(df: pd.DataFrame):
     gdf = pd.concat(gdfs, ignore_index=True)
     gdf.loc[:, "k"] = gdf["k"].astype(int)
     reduction_methods = [
-        "Const Min Loss",
+        "Balanced",
         "Submodular pick",
         "GLocalX",
         "Global linear",
@@ -475,7 +491,6 @@ def plot_global_comp(df: pd.DataFrame):
         kind="line",
         facet_kws={"sharey": False},
         **paper_theme(aspect=2, cols=5, rows=3, scaling=1.2),
-        legend=None,
     )
     i_f = 0
     for i, variable in enumerate(spdf["variable"].unique()):
@@ -539,6 +554,10 @@ def plot_global_comp_full(df: pd.DataFrame):
         df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
         "proxy_method_mod",
     ] = "Greedy Min loss (minimum coverage)"
+    df.loc[
+        df["proxy_method"].str.contains("linear_combination"),
+        "proxy_method_mod",
+    ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
     df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
     df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
@@ -572,7 +591,7 @@ def plot_global_comp_full(df: pd.DataFrame):
     p_df = df.loc[df["exp_method"].isin(exp_methods)]
     p_df = pd.concat((p_df, gdf), ignore_index=True)
     reduction_methods = [
-        "Greedy Min loss (minimum coverage)",
+        "Balanced",
         "Submodular pick",
         "GLocalX",
         "Max spherical coverage",
@@ -650,7 +669,6 @@ def plot_global_comp_full(df: pd.DataFrame):
             ),
             palette=palette,
             dashes=style,
-            legend=None,
         )
         i_f = 0
         for i, variable in enumerate(spdf["variable"].unique()):
@@ -688,29 +706,223 @@ def plot_global_comp_full(df: pd.DataFrame):
                     g.axes[i, j].set_yscale("log")
                 i_f += 1
             g.axes[i, 0].set_ylabel(variable)
-        handles = []
-        for line, label in zip(
-            g.axes.flat[0].get_lines(), spdf["Reduction method"].unique()
-        ):
-            handles.append(
-                plt.Line2D(
-                    [0],
-                    [0],
-                    color=line.get_color(),  # Use the modified color
-                    lw=line.get_linewidth(),  # Use the modified line width
-                    linestyle=line.get_linestyle(),
-                    label=label,  # Label from the data
+        plt.savefig(MANUSCRIPT_DIR / f"global_comp_full_{dataset}.pdf", dpi=600)
+
+
+def generate_summary_latex(df_in: pd.DataFrame, k=6) -> str:
+    """
+    Generates a LaTeX table summary from a dataframe.
+    """
+    df = df_in.copy(deep=True)
+    df.loc[:, "proxy_method_mod"] = "None"
+    df = df.loc[~df["proxy_method"].isna()]
+    df.loc[df["proxy_method"].str.contains("minimal_set_cov"), "proxy_method_mod"] = (
+        "Min set"
+    )
+    df.loc[df["proxy_method"].str.contains("max_coverage"), "proxy_method_mod"] = (
+        "Max coverage"
+    )
+    df.loc[
+        df["proxy_method"].str.contains("greedy_max_coverage"), "proxy_method_mod"
+    ] = "Greedy Max coverage"
+    df.loc[df["proxy_method"].str.contains("random"), "proxy_method_mod"] = "Random"
+    df.loc[df["proxy_method"].str.contains("min_loss"), "proxy_method_mod"] = "Min loss"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
+    ] = "Greedy Min loss (fixed k)"
+    df.loc[
+        df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
+        "proxy_method_mod",
+    ] = "Greedy Min loss (minimum coverage)"
+    df.loc[
+        df["proxy_method"].str.contains("linear_combination"),
+        "proxy_method_mod",
+    ] = "Balanced"
+    df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
+    df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
+    df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
+    df.loc[df["proxy_method"].str.contains("submodular"), "proxy_method_mod"] = (
+        "Submodular pick"
+    )
+    df.loc[df["proxy_method"].str.contains("glocalx"), "proxy_method_mod"] = "GLocalX"
+    df.loc[df["proxy_method"].str.contains("max_ball"), "proxy_method_mod"] = (
+        "Max spherical coverage"
+    )
+    mask = df["exp_method"].isin(
+        ["LIME", "SHAP", "LORE", "SLISEMAP", "SLIPMAP", "SmoothGrad"]
+    ) & df["proxy_method_mod"].isin(
+        ["Balanced", "GLocalX", "Submodular pick", "Max spherical coverage"]
+    )
+    df_exps = df.loc[mask]
+    df_exps = df_exps.loc[
+        ~(
+            (
+                df_exps["data"].isin(
+                    [
+                        "Air Quality",
+                        "Gas Turbine",
+                        "Life Expectancy",
+                        "QM9",
+                        "Synthetic",
+                        "Vehicles",
+                    ]
+                )
+                & (
+                    df_exps["exp_method"].isin(
+                        ["SHAP", "SLISEMAP", "SLIPMAP", "SmoothGrad"]
+                    )
                 )
             )
-        g.figure.legend(
-            handles=handles,
-            title="Reduction method",
-            bbox_to_anchor=(0.5, 0.0),
-            loc="upper center",
-            ncol=len(handles),
         )
-        plt.tight_layout()
-        plt.savefig(MANUSCRIPT_DIR / f"global_comp_full_{dataset}.pdf", dpi=600)
+    ]
+    df = df_exps.loc[df_exps["k"] == k]
+    df.loc[
+        df["proxy_method_mod"] == "Greedy Min loss (minimum coverage)",
+        "proxy_method_mod",
+    ] = "Const Min Loss"
+    # 1. Aggregate: Group by Data, Method, and Proxy, then get the mean of metrics
+    # We aggregate first to handle the "combination-specific average" requirement
+    cov_name = r"Coverage $\uparrow$"
+    stab_name = r"Instability $\downarrow$"
+    fid_name = r"Fidelity $\downarrow$"
+    time_name = r"Time (s) $\downarrow$"
+    df = df.rename(
+        columns={
+            "data": "Dataset",
+            "proxy_method_mod": "Proxy method",
+            "proxy_fidelity": fid_name,
+            "proxy_stability": stab_name,
+            "proxy_coverage": cov_name,
+            "reduction_time": time_name,
+            "exp_method": "XAI method",
+        }
+    )
+    grouped = df.groupby(["Dataset", "XAI method", "Proxy method"])[
+        [fid_name, stab_name, cov_name, time_name]
+    ].agg(["mean", "std"])
+
+    # 2. Pivot: Move Proxy Method to the column level
+    # The resulting index is (data, exp_method)
+    # The resulting columns are (Metric, ProxyMethod)
+    pivoted = grouped.unstack(level="Proxy method")
+    pivoted = pivoted.swaplevel(0, 2, axis=1)  # Proxy, Stat, Metric
+    pivoted = pivoted.swaplevel(1, 2, axis=1)  # Proxy, Metric, Stat
+    pivoted.sort_index(axis=1, level=0, inplace=True)
+
+    proxy_metric_pairs = pivoted.columns.droplevel(2).unique()
+
+    # 2. Create Base Formatted DataFrame (String representation)
+    #    We do this BEFORE escaping headers to keep alignment with the numeric 'pivoted' df easy
+    formatted_df = pd.DataFrame(index=pivoted.index, columns=proxy_metric_pairs)
+
+    # 3. Apply Row-wise Bolding Logic
+    #    Get the list of unique metrics (e.g., fidelity, coverage, stability)
+    unique_metrics = proxy_metric_pairs.get_level_values(1).unique()
+
+    for metric in unique_metrics:
+        # Filter columns for this specific metric
+        current_cols = [c for c in proxy_metric_pairs if c[1] == metric]
+
+        # Extract Mean and Std sub-dataframes for this metric across all proxies
+        # Level structure: (Proxy, Metric, Stat)
+        means_df = pivoted.loc[:, (slice(None), metric, "mean")]
+        stds_df = pivoted.loc[:, (slice(None), metric, "std")]
+
+        # Simplify columns to just Proxy names for easier comparison
+        means_df.columns = means_df.columns.get_level_values(0)
+        stds_df.columns = stds_df.columns.get_level_values(0)
+
+        # A. Find the "Best" Mean per ROW
+        if cov_name in metric:
+            best_means = means_df.max(axis=1)  # Higher is better
+            best_col_names = means_df.idxmax(axis=1)
+        else:
+            best_means = means_df.min(axis=1)  # Lower is better
+            best_col_names = means_df.idxmin(axis=1)
+
+        # B. Get the Std Dev associated with the "Best" Mean
+        #    We need this to define the "margin of error" for bolding
+        best_stds = []
+        for idx, col_name in zip(stds_df.index, best_col_names):
+            best_stds.append(stds_df.loc[idx, col_name])
+        best_stds = pd.Series(best_stds, index=stds_df.index)
+
+        # C. Calculate Logic: Is (|Mean - BestMean| <= BestStd)?
+        diffs = (means_df.sub(best_means, axis=0)).abs()
+        is_bold = diffs.apply(lambda x: np.isclose(x, 0.0))
+        is_underline = diffs.le(best_stds, axis=0)
+
+        # D. Construct the String "Mean ± Std"
+        for proxy in current_cols:
+            proxy_name = proxy[0]
+
+            # Get raw values
+            m = means_df[proxy_name]
+            s = stds_df[proxy_name]
+            bold_mask = is_bold[proxy_name]
+            underline_mask = is_underline[proxy_name]
+
+            # Formatter function
+            def create_cell_str(mean_val, std_val, bold, underline):
+                # Standard format
+                if np.isnan(mean_val):
+                    return "-"
+                val_str = f"{mean_val:.2f} $\\pm$ {std_val:.2f}"
+                if bold:
+                    return f"\\textbf{{{val_str}}}"
+                elif underline:
+                    return f"\\underline{{{val_str}}}"
+                return val_str
+
+            # Apply to DataFrame
+            formatted_df[(proxy_name, metric)] = [
+                create_cell_str(m[i], s[i], bold_mask[i], underline_mask[i])
+                for i in m.index
+            ]
+
+    # 4. Header Formatting (REVERTED TO FLAT)
+    def escape_tex(val):
+        if isinstance(val, str):
+            return val.replace("_", r"\_")
+        return val
+
+    # Escape Index
+    formatted_df.index = formatted_df.index.map(
+        lambda x: tuple(escape_tex(i) for i in x)
+    )
+
+    # Escape Columns (Both Proxy Name and Metric Name)
+    new_cols = [(escape_tex(c[0]), escape_tex(c[1])) for c in formatted_df.columns]
+    formatted_df.columns = pd.MultiIndex.from_tuples(new_cols)
+
+    # 5. Generate LaTeX
+    n_index_levels = formatted_df.index.nlevels
+    n_data_cols = len(formatted_df.columns)
+
+    # Use 'l' for index columns, 'c' for data columns
+    fmt_string = "l" * n_index_levels + "|" + 4 * ("c" * 4 + "|")
+
+    tabular_code = formatted_df.to_latex(
+        escape=False,
+        multirow=True,
+        multicolumn=True,
+        multicolumn_format="c",
+        column_format=fmt_string,
+    )
+
+    # 6. Final Wrapper with Resizebox
+    latex_wrapper = (
+        "\\begin{table}[h]\n"
+        "\\centering\n"
+        "\\caption{Summary of Proxy Methods (Mean $\\pm$ Std)}\n"
+        "\\resizebox{\\textwidth}{!}{%\n"
+        f"{tabular_code}"
+        "}\n"
+        "\\label{tab:proxy_summary}\n"
+        "\\end{table}"
+    )
+    with open(MANUSCRIPT_DIR / "global_comparison.tex", "w") as f:
+        f.write(latex_wrapper)
 
 
 def eval_proxy_method_k_sensitivity(
@@ -718,6 +930,7 @@ def eval_proxy_method_k_sensitivity(
     dname,
     expname,
     explainer,
+    exp_time,
     pname,
     proxy_method,
     k,
@@ -739,11 +952,13 @@ def eval_proxy_method_k_sensitivity(
         f"Reducing: {dname} - {expname} - {pname} - k={k}",
         flush=True,
     )
+    reduction_start = timer()
     try:
         proxies = proxy_method(explainer, epsilon=global_epsilon)
     except ValueError as ve:
         print(f"Reduction method resulted in error:\n", ve, flush=True)
         return
+    reduction_time = timer() - reduction_start
     print(
         f"Evaluating: {dname} - {expname} - {pname} - k={k}",
         flush=True,
@@ -768,8 +983,10 @@ def eval_proxy_method_k_sensitivity(
         job=job_id,
         data=dname,
         exp_method=expname,
+        exp_time=exp_time,
         proxy_method=pname,
         k=len(proxies.local_models),
+        k_max=k,
         epsilon=global_epsilon,
         full_fidelity=full_fidelity,
         full_fidelity_train=full_fidelity_train.mean().item(),
@@ -788,6 +1005,7 @@ def eval_proxy_method_k_sensitivity(
         proxy_stability=expanded_L[torch.arange(expanded_L.shape[0])[:, None], nn]
         .mean()
         .item(),
+        reduction_time=reduction_time,
     )
 
     return res
@@ -857,7 +1075,9 @@ def evaluate_k_sensitivity(job_id: int, ks: list[int]) -> None:
             # Fit the explainer to the training data
             yhat = pred_fn(X)
             explainer = expfn(X, yhat, black_box_model=m)
+            exp_start = timer()
             explainer.fit()
+            exp_time = timer() - exp_start
 
             # Get the explanation matrix and make predictions on the test and train sets
             L = explainer.get_L()
@@ -925,6 +1145,7 @@ def evaluate_k_sensitivity(job_id: int, ks: list[int]) -> None:
                     dname,
                     expname,
                     explainer,
+                    exp_time,
                     pname,
                     proxy_method,
                     k,
@@ -958,6 +1179,7 @@ if __name__ == "__main__":
         plot_k_sensitivity_full(df)
         plot_global_comp(df)
         plot_global_comp_full(df)
+        generate_summary_latex(df)
     else:
         ks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         time = timer()

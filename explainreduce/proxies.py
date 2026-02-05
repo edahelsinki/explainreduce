@@ -37,6 +37,7 @@ from localmodels import (
 )
 from sklearn.cluster import KMeans
 import explainreduce.metrics as metrics
+from explainreduce.utils import tonp
 import warnings
 
 
@@ -1011,6 +1012,82 @@ def find_proxies_greedy_k_min_loss_descent(explainer: Explainer, k: int, epsilon
     vector_representation = explainer.vector_representation[prx, :]
     reduced = explainer.clone_reduced(
         reduced_models, mapping, vector_representation, prx
+    )
+
+    return reduced
+
+
+def find_proxies_loss_cov_linear(
+    explainer: Explainer,
+    k: int,
+    lambda_weight: float = 0.5,
+    p: float = 0.33,
+    epsilon: float = None,
+):
+    """Greedily search for a set of k proxies which attain a maximum joint utility
+    between fidelity and coverage.
+    Parameters
+    ----------
+        explainer: a trained explainer object
+        k: size of the proxy set
+        lambda_weight: trade-off parameter between fidelity and coverage. defaults to 0.5
+        p: proportion of applicable models for automatically setting epsilon. if p is
+            set, epsilon is calculated as the p-th quantile of L.
+        epsilon: the maximum allowed loss value for a model to be considered applicable
+            for coverage calculation.
+    """
+
+    if (lambda_weight < 0) or (lambda_weight > 1):
+        raise ValueError(f"lambda_weight must be in [0, 1] (got {lambda_weight})!")
+    L = explainer.get_L()  # (m_models, n_items)
+    n_models, n_items = L.shape
+
+    if epsilon is None:
+        epsilon = torch.quantile(L.flatten(), p).item()
+
+    G_eps = (L < epsilon).float()  # Binary coverage matrix
+
+    # Initialization
+    # We define L_init as the mean loss per item if no model is picked.
+    # To avoid Inf, we can use the maximum loss in the dataset or a large constant.
+    L_max_per_item = torch.max(L, dim=0)[0]
+    L_init_total = torch.sum(L_max_per_item)
+
+    current_best_loss = L_max_per_item.clone()
+    current_covered = torch.zeros(n_items, dtype=torch.float32, device=L.device)
+
+    proxies = []
+
+    for _ in range(k):
+        # 1. Marginal Coverage Gain (delta_C)
+        # combined_cov is 1 if item j is covered by existing S OR candidate model i
+        potential_covered = torch.maximum(current_covered, G_eps)
+        delta_C = (
+            torch.sum(potential_covered, dim=1) - torch.sum(current_covered)
+        ) / n_items
+
+        # 2. Marginal Fidelity Gain (delta_F)
+        # Reduction in loss normalized by the total initial potential
+        potential_losses = torch.minimum(current_best_loss, L)
+        delta_L_abs = torch.sum(current_best_loss) - torch.sum(potential_losses, dim=1)
+        delta_F = delta_L_abs / L_init_total
+
+        # 3. Joint Utility Marginal Gain
+        # F(S U {i}) - F(S) = lambda * delta_C + (1 - lambda) * delta_F
+        marginal_utility = lambda_weight * delta_C + (1 - lambda_weight) * delta_F
+
+        # Greedy Selection
+        best_idx = torch.argmax(marginal_utility).item()
+        proxies.append(best_idx)
+
+        # Update state for next iteration
+        current_best_loss = torch.minimum(current_best_loss, L[best_idx])
+        current_covered = torch.maximum(current_covered, G_eps[best_idx])
+    reduced_models = [explainer.local_models[i] for i in proxies]
+    mapping = generate_minimal_loss_mapping(explainer, reduced_models)
+    vector_representation = explainer.vector_representation[proxies, :]
+    reduced = explainer.clone_reduced(
+        reduced_models, mapping, vector_representation, proxies
     )
 
     return reduced
