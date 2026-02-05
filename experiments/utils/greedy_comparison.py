@@ -21,7 +21,7 @@ from project_paths import MANUSCRIPT_DIR, RESULTS_DIR
 import pandas as pd
 import operator
 from functools import reduce
-from hyperparameters import get_bb, get_data, get_params
+from utils.hyperparameters import get_bb, get_data, get_params
 from typing import List
 from timeit import default_timer as timer
 
@@ -168,7 +168,7 @@ def produce_latex(mean_dfs: List[pd.DataFrame], std_dfs: List[pd.DataFrame]):
             l_df.loc[:, column] = l_df[column].apply(round_col)
             l_df[column] = l_df[column].astype(str)
             l_df.loc[:, column] = (
-                l_df[column] + " \pm " + s_df[column].apply(round_col).astype(str)
+                l_df[column] + " $\pm$ " + s_df[column].apply(round_col).astype(str)
             )
             l_df.loc[:, column] = l_df[column].apply(latexify)
         l_dfs.append(l_df)
