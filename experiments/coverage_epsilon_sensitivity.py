@@ -58,6 +58,7 @@ def preprocess_results(odf: pd.DataFrame) -> pd.DataFrame:
     df = df.loc[df["proxy_method_mod"] == "Balanced"]
     df = df.loc[~df["exp_method"].isin(["VanillaGrad", "GlobalLinear", "SLIPMAP"])]
     df = df.loc[df["init_p"] != 0.41]
+    df = df.loc[df["k"] == 6]
     return df
 
 
@@ -139,7 +140,7 @@ def get_explainer(dname, bb, cls):
 
 def get_optimisation_method(coverage, p):
     return {
-        ("greedy_balanced_k_5", coverage, p): partial(
+        ("greedy_balanced_k_6", coverage, p): partial(
             px.find_proxies_loss_cov_linear, k=6, p=p
         ),
     }
