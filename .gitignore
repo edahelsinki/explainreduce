@@ -496,3 +496,6 @@ notes/debug.py
 test.py
 plots/
 *.pptx
+
+config.ini
+uv.lock

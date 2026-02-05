@@ -21,7 +21,7 @@ from project_paths import MANUSCRIPT_DIR, RESULTS_DIR
 import pandas as pd
 import operator
 from functools import reduce
-from experiment.utils.hyperparameters import get_bb, get_data, get_params
+from utils.hyperparameters import get_bb, get_data, get_params
 from typing import List
 from timeit import default_timer as timer
 
@@ -46,11 +46,15 @@ def preprocess_results(df: pd.DataFrame):
     )
     df.loc[
         df["proxy_method"].str.contains("greedy_min_loss_[0-9]+"), "proxy_method_mod"
-    ] = "Greedy Min Loss (fixed k)"
+    ] = "Greedy Min Loss"
     df.loc[
         df["proxy_method"].str.contains("greedy_min_loss_[0-9]+_min_cov"),
         "proxy_method_mod",
     ] = "Greedy Min Loss (minimum coverage)"
+    df.loc[
+        df["proxy_method"].str.contains("balanced"),
+        "proxy_method_mod",
+    ] = "Balanced"
     df.loc[df["proxy_method"].str.contains("B"), "proxy_method_mod"] = "B K-means"
     df.loc[df["proxy_method"].str.contains("L"), "proxy_method_mod"] = "L K-means"
     df.loc[df["proxy_method"].str.contains("X"), "proxy_method_mod"] = "X K-means"
@@ -88,13 +92,13 @@ def concanate_results(
 ):
     min_methods = [
         "Optimal Min Loss",
-        "Greedy Min Loss (fixed k)",
-        "Greedy Min Loss (minimum coverage)",
+        "Greedy Min Loss",
+        "Balanced",
     ]
     cov_methods = [
         "Optimal Max Coverage",
         "Greedy Max Coverage",
-        "Greedy Min Loss (minimum coverage)",
+        "Balanced",
     ]
     metrics = ["proxy_coverage", "proxy_fidelity_train", "proxy_fidelity"]
     mean_dfs = []
@@ -164,7 +168,7 @@ def produce_latex(mean_dfs: List[pd.DataFrame], std_dfs: List[pd.DataFrame]):
             l_df.loc[:, column] = l_df[column].apply(round_col)
             l_df[column] = l_df[column].astype(str)
             l_df.loc[:, column] = (
-                l_df[column] + " \pm " + s_df[column].apply(round_col).astype(str)
+                l_df[column] + " $\pm$ " + s_df[column].apply(round_col).astype(str)
             )
             l_df.loc[:, column] = l_df[column].apply(latexify)
         l_dfs.append(l_df)
@@ -177,8 +181,8 @@ def produce_latex(mean_dfs: List[pd.DataFrame], std_dfs: List[pd.DataFrame]):
                     "Dataset",
                     "Greedy Max Coverage",
                     "Greedy Max Coverage_approx",
-                    "Greedy Min Loss (minimum coverage)",
-                    "Greedy Min Loss (minimum coverage)_approx",
+                    "Balanced",
+                    "Balanced_approx",
                     "Optimal Max Coverage",
                 ]
             ]
@@ -186,23 +190,23 @@ def produce_latex(mean_dfs: List[pd.DataFrame], std_dfs: List[pd.DataFrame]):
             l_df = l_df[
                 [
                     "Dataset",
-                    "Greedy Min Loss (fixed k)",
-                    "Greedy Min Loss (fixed k)_approx",
-                    "Greedy Min Loss (minimum coverage)",
-                    "Greedy Min Loss (minimum coverage)_approx",
+                    "Greedy Min Loss",
+                    "Greedy Min Loss_approx",
+                    "Balanced",
+                    "Balanced_approx",
                     "Optimal Min Loss",
                 ]
             ]
         l_df = l_df.rename(
             columns={
-                "Greedy Min Loss (minimum coverage)": "G. Min Loss (min $c$)",
-                "Greedy Min Loss (fixed k)": "G. Min Loss",
+                "Balanced": "Balanced",
+                "Greedy Min Loss": "G. Min Loss",
                 "Greedy Max Coverage": "G. Max $c$",
                 "Optimal Max Coverage": "Max $c$",
                 "Optimal Min Loss": "Min Loss",
                 "Greedy Max Coverage_approx": "A. ratio",
-                "Greedy Min Loss (minimum coverage)_approx": "A. ratio",
-                "Greedy Min Loss (fixed k)_approx": "A. ratio",
+                "Greedy Min Loss_approx": "A. ratio",
+                "Balanced_approx": "A. ratio",
             }
         )
         l_df.columns = [f"\\bfseries {x}" for x in l_df.columns]
@@ -271,18 +275,6 @@ def get_explainer(dname, bb, cls):
         "SLISEMAP": partial(
             lm.SLISEMAPExplainer, classifier=cls, **get_params("SLISEMAP", dname, bb)
         ),
-        #         "SLIPMAP": partial(
-        #             lm.SLIPMAPExplainer, classifier=cls, **get_params("SLIPMAP", dname, bb)
-        #         ),
-        # "VanillaGrad": partial(
-        #     lm.VanillaGradExplainer,
-        #     classifier=cls,
-        # ),
-        # "SmoothGrad": partial(
-        # lm.SmoothGradExplainer,
-        # classifier=cls,
-        # **get_params("SmoothGrad", dname, bb),
-        # ),
         "LIME": partial(
             lm.LIMEExplainer, classifier=cls, **get_params("LIME", dname, bb)
         ),
@@ -300,6 +292,7 @@ def get_optimisation_method(k: int):
             px.find_proxies_coverage, k=k, p=0.33, time_limit=500, pulp_msg=False
         ),
         (f"random_k_{k}", k): partial(px.find_proxies_random, k=k),
+        (f"greedy_balanced_k_{k}", k): partial(px.find_proxies_loss_cov_linear, k=k),
         # (f"min_loss_{k}", k): partial(px.find_proxies_loss, k=k, time_limit=300),
         (f"greedy_min_loss_{k}", k): partial(px.find_proxies_greedy_k_min_loss, k=k),
         (f"greedy_min_loss_{k}_min_cov", k): partial(
