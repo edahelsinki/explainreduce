@@ -72,14 +72,14 @@ def plot_results(df: pd.DataFrame):
         hue="exp_method",
         style="exp_method",
         col="data",
-        col_wrap=4,
+        col_wrap=6,
         kind="line",
         facet_kws={"sharey": False},
     )
     for i, ax in enumerate(g.axes):
-        if i > 7:
+        if i > 5:
             ax.set_xlabel("p")
-        if i % 4 == 0:
+        if i % 6 == 0:
             ax.set_ylabel("Fidelity")
         ax.set_title(df["data"].unique()[i])
     g.fig.savefig(MANUSCRIPT_DIR / "epsilon_sensitivity_new.pdf", dpi=300)
