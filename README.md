@@ -6,11 +6,8 @@ The set of proxies summarizes the black-box model's decision pattern across diff
 ## Citations
 Preprint of the ExplainReduce paper
 
-> *Seppäläinen, Lauri, Mudong Guo, and Puolamäki, Kai (2025)*.
->
-> **`ExplainReduce`: Summarising Local Explanations via Proxies**
->
-> Arxiv preprint [https://arxiv.org/abs/2502.10311](https://arxiv.org/abs/2502.10311).
+> Seppäläinen, L., Guo, M., Puolamäki, K., 2025. ExplainReduce: Summarising local explanations via proxies. <https://doi.org/10.48550/arXiv.2502.10311>
+> (Accepted for publication in the [4th World Conference on eXplainable Artificial Intelligence](https://xaiworldconference.com/2026/).)
 
 ## Installation
 ExplainReduce requires Python 3, version 3.11 or greater.
